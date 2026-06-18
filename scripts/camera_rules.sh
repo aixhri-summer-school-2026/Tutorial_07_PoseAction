@@ -1,0 +1,2 @@
+echo 'SUBSYSTEM=="video4linux", ATTRS{idVendor}=="38fb", ATTRS{idProduct}=="1002", SYMLINK+="reachy_camera", MODE="0666"' | sudo tee /etc/udev/rules.d/99-reachy-cameras.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger

@@ -1,43 +1,64 @@
-# Tutorial_07_PoseAction
-Tutorial on person tracking, pose estimation and action recognition for HRI
+# Chat With Your Robot
 
+Using VLMs to interact with an expressive Reachy Mini robot (AIxHRI Summer School 2026).
 
-# Part 1 - Implement a pose estimator 
-- simple ready-to-use SOTA detection + tracking + pose estimator like YOLO26 implementation on Ultralytics with coco 17 keypoints format
-- *Optional* : Add another dataset with more keypoints + conversion to ultralytics format + `.train` with ultralytics (maybe too long and not very useful)
-- Test on webcam with live visualization
-- *Optional* : Add a 2D to 3D lifter
+## Prerequisites
 
-**Time** : ~ 30 minutes
+- Docker and Docker Compose installed (see [docker setup guide](https://github.com/aixhri-summer-school-2026/docker-nvidia-tuto)).
+- Reachy Mini connected by USB.
+- Linux host with permission to run `sudo`.
 
-# Part 2 - Action recognition dataset
-- Intro + visualization + preprocessing action recognition data (take a simple dataset like [UTKinect-Action3D Dataset](https://cvrc.ece.utexas.edu/KinectDatasets/HOJ3D.html))
-- Include 2D reprojection into the preprocessing (*optional* do it before and provide reprojected data)
+## Setup
 
-**Time** : ~15 minutes
+Clone the repository:
 
-# Part 3
-## Option A - Train an action recognition
-- Different possible architectures, that can be trained locally (ST-GCN, 2s-AGCN, MotionBERT head...) or design your own
-- Implement the dataloader and training loop
-- Train and save the checkpoint model
-- Visualize results on skeleton sequences + videos
+```bash
+git clone git@github.com:aixhri-summer-school-2026/Tutorial_02_Chat_with_your_robot.git
+cd Tutorial_02_Chat_with_your_robot
+```
 
-## Option B - Hand-coded action recognition
-- Only on simpler actions, appraoching, leaving etc...
-- Visualize results on skeleton sequences + videos
+Install udev rules (USB + camera symlink):
 
-**Time** : ~ 30 minutes
+```bash
+make install-rules
+```
 
-# Part 4 - Pipeline implementation with rosbag or webcam
-- Have a rosbag of someone perfoming actions (*optional* everyone uses their own webcam)
-- Implement the full pipeline of detection, tracking, pose estimation and action recognition
-- *Optional* : If too long replace this by a implementing the pipeline on the dataset video
+If group permissions were updated, log out and log back in once.
 
-**Time** : ~ 30 minutes
+## Build and run
 
-# Part 5 - Robot behavior
-- Add topic sending for actions on Shelfy (eye expression, sound playing, lights)
-- Connect to shelfy and use the RGBD camera (or keep the same camera) and play the effects
+Build the image locally:
 
-**Time** : ~ 15 minutes (optional)
+```bash
+make build
+```
+
+Start the Reachy Mini daemon container:
+
+```bash
+make run
+```
+
+Open a shell inside the running container:
+
+```bash
+make shell
+```
+
+Stream logs:
+
+```bash
+make logs
+```
+
+Stop everything:
+
+```bash
+make down
+```
+
+## Tests
+
+Test scripts are in `tests/` and can be run from inside the container.
+
+See `tests/README.md` for full test instructions.

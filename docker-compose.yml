@@ -1,0 +1,33 @@
+services:
+  reachy-mini:
+    container_name: reachy-mini
+    privileged: true
+    build:
+      context: .
+      dockerfile: .ci/Dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    image: reachy-mini-2404
+    network_mode: "host"
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XDG_RUNTIME_DIR=/run/user/${UID:-1000}
+      - PULSE_SERVER=unix:/run/user/${UID:-1000}/pulse/native
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./tests:/app/tests
+      - /run/udev:/run/udev
+      - /run/user/${UID:-1000}/pulse:/run/user/${UID:-1000}/pulse
+      - /run/user/${UID:-1000}/pipewire-0:/run/user/${UID:-1000}/pipewire-0
+      - /dev:/dev
+    stdin_open: true
+    tty: true
+    command: ["reachy-mini-daemon"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
