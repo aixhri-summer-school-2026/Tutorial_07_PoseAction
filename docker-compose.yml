@@ -17,13 +17,14 @@ services:
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ./tests:/app/tests
+      - ./tutorial:/app/tutorial
       - /run/udev:/run/udev
       - /run/user/${UID:-1000}/pulse:/run/user/${UID:-1000}/pulse
       - /run/user/${UID:-1000}/pipewire-0:/run/user/${UID:-1000}/pipewire-0
       - /dev:/dev
     stdin_open: true
     tty: true
-    command: ["reachy-mini-tutorial-07-daemon"]
+    command: ["reachy-mini-daemon"]
     deploy:
       resources:
         reservations:
