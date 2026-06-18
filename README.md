@@ -1,6 +1,6 @@
-# Chat With Your Robot
+# Play with Reachy
 
-Using VLMs to interact with an expressive Reachy Mini robot (AIxHRI Summer School 2026).
+Using hand pose estimation and action recognition to interact with an expressive Reachy Mini robot (AIxHRI Summer School 2026).
 
 ## Prerequisites
 
