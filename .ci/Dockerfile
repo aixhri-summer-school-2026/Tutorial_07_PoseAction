@@ -91,33 +91,32 @@ RUN uv pip install --python $VIRTUAL_ENV "reachy-mini"
 RUN uv pip install --python $VIRTUAL_ENV "opencv-python"
 
 # Install Kyutai TTS and VLM dependencies
-RUN uv pip install --python $VIRTUAL_ENV torch torchvision torchcodec "numpy>=2.0.0" "scipy>=1.14.0" soundfile huggingface_hub pocket-tts transformers Pillow
+RUN uv pip install --python $VIRTUAL_ENV torch torchvision torchcodec "numpy>=2.0.0" "scipy>=1.14.0" soundfile huggingface_hub pocket-tts transformers Pillow ultralytics
+
+# Install Silero VAD directly from PyPI and pre-cache the model
+RUN uv pip install --python $VIRTUAL_ENV "nvidia-cublas-cu12" "nvidia-cudnn-cu12==9.*"
+# RUN uv pip install --python $VIRTUAL_ENV "silero-vad" "faster-whisper"
 
 # Pre-download the Pocket TTS model weights into the Docker image cache
 RUN /opt/reachy_mini_env/bin/python -c "from pocket_tts import TTSModel; TTSModel.load_model(language='english')"
 
-# Pre-download the VLM weights (Safely downloads without loading into RAM)
-RUN /opt/reachy_mini_env/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openbmb/MiniCPM-V-4.6')"
+# # Pre-download the VLM weights (Safely downloads without loading into RAM)
+# RUN /opt/reachy_mini_env/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openbmb/MiniCPM-V-4.6')"
 
 # Install accelerate TODO: move this above
 RUN uv pip install --python $VIRTUAL_ENV "accelerate"
 
-# Install Silero VAD directly from PyPI and pre-cache the model
-# TODO: Move this block up with the main torch installation once caching is no longer needed
-RUN uv pip install --python $VIRTUAL_ENV "nvidia-cublas-cu12" "nvidia-cudnn-cu12==9.*"
-RUN uv pip install --python $VIRTUAL_ENV "silero-vad" "faster-whisper"
-
 # Pre-cache Silero VAD
-RUN /opt/reachy_mini_env/bin/python -c "from silero_vad import load_silero_vad; load_silero_vad()"
+# RUN /opt/reachy_mini_env/bin/python -c "from silero_vad import load_silero_vad; load_silero_vad()"
 
 # Pre-cache Faster-Whisper 'tiny.en' model
-RUN /opt/reachy_mini_env/bin/python -c "from faster_whisper import download_model; download_model('tiny.en')"
+# RUN /opt/reachy_mini_env/bin/python -c "from faster_whisper import download_model; download_model('tiny.en')"
 
 # Add venv to PATH and set up auto-activation
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
 # Add Faster-Whisper CUDA libraries to path
-ENV LD_LIBRARY_PATH="/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
+# ENV LD_LIBRARY_PATH="/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
 
 RUN echo "source /opt/reachy_mini_env/bin/activate" >> /home/reachy/.bashrc
 
@@ -131,4 +130,4 @@ RUN sed -i 's/^#force_color_prompt=yes/force_color_prompt=yes/' /home/reachy/.ba
 RUN sed -i 's/return find_video_device(devices)/return "\/dev\/reachy_camera", _make_camera_specs("Reachy")/' /opt/reachy_mini_env/lib/python3.12/site-packages/reachy_mini/media/device_detection.py
 
 # Default command
-CMD ["reachy-mini-daemon"]
+CMD ["reachy-mini-tutorial-07-daemon"]

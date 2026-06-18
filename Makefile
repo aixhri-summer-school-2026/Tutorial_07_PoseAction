@@ -11,7 +11,7 @@ run:
 	docker compose up -d
 
 shell:
-	docker compose exec reachy-mini /bin/bash
+	docker compose exec reachy-mini-tutorial-07 /bin/bash
 
 down:
 	docker compose down
@@ -19,6 +19,7 @@ down:
 install-rules:
 	bash scripts/camera_rules.sh && bash scripts/usb_permissions.sh
 logs:
-	docker compose logs -f reachy-mini
+	docker compose logs -f reachy-mini-tutorial-07
+	
 # notebook:
 #   docker compose exec reachy-mini jupyter notebook --ip=

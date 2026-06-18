@@ -13,8 +13,8 @@ Using VLMs to interact with an expressive Reachy Mini robot (AIxHRI Summer Schoo
 Clone the repository:
 
 ```bash
-git clone git@github.com:aixhri-summer-school-2026/Tutorial_02_Chat_with_your_robot.git
-cd Tutorial_02_Chat_with_your_robot
+git clone git@github.com:aixhri-summer-school-2026/Tutorial_07_PoseAction.git
+cd Tutorial_07_PoseAction
 ```
 
 Install udev rules (USB + camera symlink):

@@ -1,43 +1,42 @@
 # Tutorial_07_PoseAction
-Tutorial on person tracking, pose estimation and action recognition for HRI
+Tutorial on person tracking, hand pose estimation, head pose estimation and action recognition for HRI
 
+# Part 1 - Implement a hand detector and keypoints estimator 
+## To prepare before
 
-# Part 1 - Implement a pose estimator 
-- simple ready-to-use SOTA detection + tracking + pose estimator like YOLO26 implementation on Ultralytics with coco 17 keypoints format
-- *Optional* : Add another dataset with more keypoints + conversion to ultralytics format + `.train` with ultralytics (maybe too long and not very useful)
-- Test on webcam with live visualization
-- *Optional* : Add a 2D to 3D lifter
+## Tutorial content
+- Use from https://docs.ultralytics.com/datasets/pose/hand-keypoints#usage
+    - Quickly load and visualize dataset `visualize_handkeypoints_dataset.py`
+    - Launch training with ultralytics `train_hand_detector.py`
 
-**Time** : ~ 30 minutes
+- Test it live with the robot feed on a visualizer `visualize_hands_live.py`
 
 # Part 2 - Action recognition dataset
-- Intro + visualization + preprocessing action recognition data (take a simple dataset like [UTKinect-Action3D Dataset](https://cvrc.ece.utexas.edu/KinectDatasets/HOJ3D.html))
-- Include 2D reprojection into the preprocessing (*optional* do it before and provide reprojected data)
+## To prepare before
+- Use HaGRIDv2 dataset from https://github.com/hukenovs/hagrid
+    - Already downloaded in HaGRIDv2_annotations (annotations only with boxes hand keypoints). TODO : prepare a subsampled dataset.
+    - Use only actions : heart, mute, peace, no_gesture, rock, point, stop, fist
+    - Use only 100 samples (training) + 50 samples (val) + 50 samples (test) per action for faster training
 
-**Time** : ~15 minutes
+##  Tutorial content
+- Train either a plain MLP or plain GCN for action classification (one hand). Simple PyTorch implementation, with also the dataloader, basic augmentation (flipping). `train_hand_pose_classification.py --...`
+- Use the network trained on Part 1 for processing, feed into the classifier, and test it live with the robot feed on a visualizer `visualize_pose_classification_live.py`
 
-# Part 3
-## Option A - Train an action recognition
-- Different possible architectures, that can be trained locally (ST-GCN, 2s-AGCN, MotionBERT head...) or design your own
-- Implement the dataloader and training loop
-- Train and save the checkpoint model
-- Visualize results on skeleton sequences + videos
 
-## Option B - Hand-coded action recognition
-- Only on simpler actions, appraoching, leaving etc...
-- Visualize results on skeleton sequences + videos
+# Part 3 - Robot behaviors from action 
+## To prepare before
 
-**Time** : ~ 30 minutes
+##  Tutorial content
+- Use the pipeline of Part 2 and the Reachy API create_head_pose, set_target, push_audio_sample, to implement behaviors (based on right hand action detection except for heart only if both hands are classified "heart")  `visualize_interact_live.py`
+    - sound (play random sounds) : start on "point", stop on "mute"
+    - antennas (open or close antenas) : open on "rock", close on "fist"
+    - track the person (move the head to track the right left hand position) : start on "peace", stop on "stop"
+    - wave the head : one time then continuously while seing the "heart" from both hands
 
-# Part 4 - Pipeline implementation with rosbag or webcam
-- Have a rosbag of someone perfoming actions (*optional* everyone uses their own webcam)
-- Implement the full pipeline of detection, tracking, pose estimation and action recognition
-- *Optional* : If too long replace this by a implementing the pipeline on the dataset video
 
-**Time** : ~ 30 minutes
+# Part 4 - New tracking behavior : mirror head
+## To prepare before
 
-# Part 5 - Robot behavior
-- Add topic sending for actions on Shelfy (eye expression, sound playing, lights)
-- Connect to shelfy and use the RGBD camera (or keep the same camera) and play the effects
-
-**Time** : ~ 15 minutes (optional)
+##  Tutorial content
+- Use the implementation in `SixDRepNet` of face detection + head pose estimation like in `demo.py`
+- Update the "track the person" behavior to mirror the head pose instead of following a hand `visualize_interact_live_v2.py`

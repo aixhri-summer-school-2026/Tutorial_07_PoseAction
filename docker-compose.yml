@@ -1,6 +1,6 @@
 services:
-  reachy-mini:
-    container_name: reachy-mini
+  reachy-mini-tutorial-07:
+    container_name: reachy-mini-tutorial-07
     privileged: true
     build:
       context: .
@@ -8,7 +8,7 @@ services:
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
-    image: reachy-mini-2404
+    image: reachy-mini-tutorial-07-2404
     network_mode: "host"
     environment:
       - DISPLAY=${DISPLAY}
@@ -23,7 +23,7 @@ services:
       - /dev:/dev
     stdin_open: true
     tty: true
-    command: ["reachy-mini-daemon"]
+    command: ["reachy-mini-tutorial-07-daemon"]
     deploy:
       resources:
         reservations:
