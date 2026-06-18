@@ -130,4 +130,4 @@ RUN sed -i 's/^#force_color_prompt=yes/force_color_prompt=yes/' /home/reachy/.ba
 RUN sed -i 's/return find_video_device(devices)/return "\/dev\/reachy_camera", _make_camera_specs("Reachy")/' /opt/reachy_mini_env/lib/python3.12/site-packages/reachy_mini/media/device_detection.py
 
 # Default command
-CMD ["reachy-mini-tutorial-07-daemon"]
+CMD ["reachy-mini-daemon"]
