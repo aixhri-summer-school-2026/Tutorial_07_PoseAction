@@ -101,11 +101,16 @@ class SoundPlayer:
         self.thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self):
-        self.mini.media.start_playing()
         self.thread.start()
 
     def set_active(self, active):
+        if active != self.active:
+            if active:
+                self.mini.media.start_playing()
+            else:
+                self.mini.media.stop_playing()
         self.active = active
+        
 
     def stop(self):
         self.running = False
@@ -122,7 +127,7 @@ class SoundPlayer:
             if not self.active:
                 time.sleep(0.05)
                 continue
-
+            
             if time.time() > next_note_time:
                 frequency = random.choice(notes)
                 next_note_time = time.time() + random.uniform(0.2, 0.5)
@@ -197,6 +202,7 @@ def main():
         mini.goto_target(create_head_pose(pitch=-10.0),
                          antennas=np.deg2rad(ANTENNAS_CLOSED), duration=1.0)
         mini.set_automatic_body_yaw(True)
+        # mini.enable_wobbling() # too heavy wobbling, uncomment to enable it
 
         try:
             while True:
@@ -210,14 +216,12 @@ def main():
                 head_result = head_detector.detect_largest(frame)
 
                 command_hand = max(hands, key=lambda h: h["mean_x"]) if hands else None
-                both_hearts = len([h for h in hands if h["gesture"] == "heart"]) >= 2
 
                 raw_gesture = command_hand["gesture"] if command_hand else "no_gesture"
                 gesture = smoother.update(raw_gesture)
 
                 if gesture == "point":
                     sound_on = True
-                    # pass
                 elif gesture == "mute":
                     sound_on = False
                 elif gesture == "rock":
@@ -241,9 +245,7 @@ def main():
                 ).as_euler("zyx", degrees=True)
 
                 head_box = None
-                if both_hearts:
-                    pass
-                elif tracking_on and head_result is not None:
+                if tracking_on and head_result is not None:
                     track_lost_counter = 0
                     (hx, hy), head_box = head_result
                     _im_target_yaw = -(hx - 0.5) * (CAMERA_FOV_H_DEG * 1.3)
