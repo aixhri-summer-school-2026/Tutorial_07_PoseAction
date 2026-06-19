@@ -25,21 +25,32 @@ uv pip install -r tutorial/requirements_extra.txt
 python tutorial/prepare_hagrid_dataset.py
 ```
 
-A pretrained hand detector (`weights/yolo26s-pose-hands.pt`) and the
-SixDRepNet head-pose weights are already in `tutorial/weights/` and
-`tutorial/SixDRepNet/weights/`, so you can skip the long detector training.
+The hand keypoint models (MediaPipe), the SixDRepNet head-pose weights, and an
+optional YOLO detector are already in `tutorial/weights/` and
+`tutorial/SixDRepNet/weights/`, so there is nothing else to download.
+
+## Hand keypoint estimator (used by Parts 1-4)
+
+For the live demos we use the **MediaPipe** hand pipeline (palm detector +
+21-keypoint hand model) from the OpenCV Zoo, wrapped in `hand_detector.py`. It
+is robust and its 21 keypoints follow the same convention as the HaGRID data
+the classifier is trained on. It runs on OpenCV's DNN module, so there are no
+extra dependencies. The model files live in `weights/` and the wrapper classes
+(from [opencv_zoo](https://github.com/opencv/opencv_zoo), Apache-2.0) in
+`mediapipe/`.
 
 ## Part 1 - Hand detection + keypoints
 
 ```bash
-# Look at the dataset (downloads it the first time)
-python tutorial/visualize_handkeypoints_dataset.py
-
-# OPTIONAL: train your own detector (slow). A pretrained one is provided.
-python tutorial/train_hand_detector.py --epochs 20
-
-# Run the detector live on the robot camera
+# Run the hand detector live on the robot camera
 python tutorial/visualize_hands_live.py
+```
+
+Optional bonus (training your own YOLO detector, the original Part 1 approach):
+
+```bash
+python tutorial/visualize_handkeypoints_dataset.py   # look at the dataset
+python tutorial/train_hand_detector.py --epochs 20   # slow; not used by the demos
 ```
 
 ## Part 2 - Gesture classification
@@ -82,10 +93,11 @@ head pose** (estimated with SixDRepNet) instead of following a hand.
 | File                                   | What it is                                   |
 | -------------------------------------- | -------------------------------------------- |
 | `gesture_utils.py`                     | shared helpers (labels, models, drawing)     |
+| `hand_detector.py`                     | MediaPipe hand keypoint estimator (Parts 1-4)|
 | `prepare_hagrid_dataset.py`            | prep: build the keypoint dataset             |
-| `visualize_handkeypoints_dataset.py`   | Part 1: look at the dataset                  |
-| `train_hand_detector.py`               | Part 1: train the detector                   |
 | `visualize_hands_live.py`              | Part 1: live hands                           |
+| `visualize_handkeypoints_dataset.py`   | Part 1 bonus: look at the YOLO dataset       |
+| `train_hand_detector.py`               | Part 1 bonus: train a YOLO detector          |
 | `train_hand_pose_classification.py`    | Part 2: train the classifier                 |
 | `visualize_pose_classification_live.py`| Part 2: live gestures                        |
 | `visualize_interact_live.py`           | Part 3: behaviours                           |
@@ -93,8 +105,9 @@ head pose** (estimated with SixDRepNet) instead of following a hand.
 
 ## Notes / things to tune on the real robot
 
-- "Right hand" is taken as the **right-most hand in the image** (the detector
-  does not output handedness).
+- "Right hand" is taken as the **right-most hand in the image**. The MediaPipe
+  detector also reports a `handedness` (Left/Right) you could use instead, but
+  note it assumes a mirrored/selfie view.
 - The **sign** of head yaw/pitch/roll for tracking & mirroring, and the
   **antenna open/closed** angles, are reasonable guesses — flip/tune them in
   the scripts if the robot moves the wrong way.

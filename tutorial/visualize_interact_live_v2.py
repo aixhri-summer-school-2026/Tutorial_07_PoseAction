@@ -31,13 +31,11 @@ import numpy as np
 import torch
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
-from ultralytics import YOLO
 
 from gesture_utils import classify_hand, draw_hand, draw_label, load_classifier
+from hand_detector import HandDetector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Pretrained hand detector by default (use hand_detector.pt if you trained one).
-DEFAULT_DETECTOR = os.path.join(HERE, "weights", "yolo26s-pose-hands.pt")
 DEFAULT_CLASSIFIER = os.path.join(HERE, "weights", "gesture_classifier.pt")
 
 # SixDRepNet lives in a sub-folder with its own "nets" and "utils" packages.
@@ -176,21 +174,17 @@ class SoundPlayer:
             time.sleep(chunk_seconds * 0.5)
 
 
-def analyze_hands(result, classifier, labels, device, conf_threshold):
+def analyze_hands(detector, frame, classifier, labels, device, conf_threshold):
     hands = []
-    if result.keypoints is None or len(result.keypoints) == 0:
-        return hands
-    kpts_pixels = result.keypoints.xy.cpu().numpy()
-    kpts_norm = result.keypoints.xyn.cpu().numpy()
-    for hand_pixels, hand_norm in zip(kpts_pixels, kpts_norm):
-        gesture, confidence = classify_hand(classifier, labels, hand_norm, device)
+    for hand in detector.detect(frame):
+        gesture, confidence = classify_hand(classifier, labels, hand["norm"], device)
         if confidence < conf_threshold:
             gesture = "no_gesture"
         hands.append({
             "gesture": gesture,
             "confidence": confidence,
-            "pixels": hand_pixels,
-            "mean_x": float(hand_norm[:, 0].mean()),
+            "pixels": hand["pixels"],
+            "mean_x": hand["mean_x"],
         })
     return hands
 
@@ -201,18 +195,17 @@ def clamp(value, limit):
 
 def main():
     parser = argparse.ArgumentParser(description="Mirror-head robot behaviours.")
-    parser.add_argument("--detector", default=DEFAULT_DETECTOR)
     parser.add_argument("--classifier", default=DEFAULT_CLASSIFIER)
     parser.add_argument("--conf", type=float, default=0.5)
     args = parser.parse_args()
 
-    for path in (args.detector, args.classifier, SIXD_MODEL, SIXD_DETECTOR):
+    for path in (args.classifier, SIXD_MODEL, SIXD_DETECTOR):
         if not os.path.exists(path):
             print(f"[ERROR] missing file: {path}")
             return
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    hand_detector = YOLO(args.detector)
+    hand_detector = HandDetector()
     classifier, labels = load_classifier(args.classifier, device)
     head_estimator = HeadPoseEstimator(SIXD_MODEL, SIXD_DETECTOR, device)
 
@@ -241,8 +234,8 @@ def main():
                 # The camera frame is read-only; copy it so we can draw on it.
                 frame = frame.copy()
 
-                result = hand_detector(frame, conf=args.conf, verbose=False)[0]
-                hands = analyze_hands(result, classifier, labels, device, args.conf)
+                hands = analyze_hands(hand_detector, frame, classifier, labels,
+                                      device, args.conf)
 
                 command_hand = max(hands, key=lambda h: h["mean_x"]) if hands else None
                 both_hearts = len([h for h in hands if h["gesture"] == "heart"]) >= 2

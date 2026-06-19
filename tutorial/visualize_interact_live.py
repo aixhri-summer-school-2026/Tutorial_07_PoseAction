@@ -29,24 +29,23 @@ from collections import deque, Counter
 import cv2
 import numpy as np
 import torch
+import scipy
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
-from ultralytics import YOLO
 
 from gesture_utils import classify_hand, draw_hand, draw_label, load_classifier
+from hand_detector import HandDetector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Pretrained hand detector by default (use hand_detector.pt if you trained one).
-DEFAULT_DETECTOR = os.path.join(HERE, "weights", "yolo26s-pose-hands.pt")
 DEFAULT_CLASSIFIER = os.path.join(HERE, "weights", "gesture_classifier.pt")
 
-# Antenna poses in radians [left, right]. Tune these to taste.
-ANTENNAS_OPEN = [1.0, 1.0]
-ANTENNAS_CLOSED = [0.0, 0.0]
+# Antenna poses in degrees [left, right]. Tune these to taste.
+ANTENNAS_CLOSED = [-180, 180]
+ANTENNAS_OPEN = [0, 0]
 
 # How far the head can turn while tracking (degrees).
-MAX_YAW = 30.0
-MAX_PITCH = 20.0
+# MAX_YAW = 30.0
+# MAX_PITCH = 20.0
 
 
 class GestureSmoother:
@@ -99,9 +98,11 @@ class SoundPlayer:
 
         while self.running:
             if not self.active:
+                # print("SoundPlayer: not active")
                 time.sleep(0.05)
                 continue
-
+            
+            # print("SoundPlayer: active")
             # Pick a new random note every so often.
             if time.time() > next_note_time:
                 frequency = random.choice(notes)
@@ -115,48 +116,40 @@ class SoundPlayer:
             time.sleep(chunk_seconds * 0.5)
 
 
-def analyze_hands(result, classifier, labels, device, conf_threshold):
-    """Classify every detected hand.
+def analyze_hands(detector, frame, classifier, labels, device, conf_threshold):
+    """Detect and classify every hand in the frame.
 
     Returns a list of dicts, one per hand, with its gesture, confidence,
     pixel keypoints and normalized wrist position.
     """
     hands = []
-    if result.keypoints is None or len(result.keypoints) == 0:
-        return hands
-
-    kpts_pixels = result.keypoints.xy.cpu().numpy()
-    kpts_norm = result.keypoints.xyn.cpu().numpy()
-
-    for hand_pixels, hand_norm in zip(kpts_pixels, kpts_norm):
-        gesture, confidence = classify_hand(classifier, labels, hand_norm, device)
+    for hand in detector.detect(frame):
+        gesture, confidence = classify_hand(classifier, labels, hand["norm"], device)
         if confidence < conf_threshold:
             gesture = "no_gesture"
         hands.append({
             "gesture": gesture,
             "confidence": confidence,
-            "pixels": hand_pixels,
-            "wrist_norm": hand_norm[0],     # (x, y) in [0, 1]
-            "mean_x": float(hand_norm[:, 0].mean()),
+            "pixels": hand["pixels"],
+            "wrist_norm": hand["norm"][0],     # (x, y) in [0, 1]
+            "mean_x": hand["mean_x"],
         })
     return hands
 
 
 def main():
     parser = argparse.ArgumentParser(description="Gesture-driven robot behaviours.")
-    parser.add_argument("--detector", default=DEFAULT_DETECTOR)
     parser.add_argument("--classifier", default=DEFAULT_CLASSIFIER)
     parser.add_argument("--conf", type=float, default=0.5,
                         help="Minimum classifier confidence to trust a gesture.")
     args = parser.parse_args()
 
-    for path in (args.detector, args.classifier):
-        if not os.path.exists(path):
-            print(f"[ERROR] missing file: {path}")
-            return
+    if not os.path.exists(args.classifier):
+        print(f"[ERROR] missing file: {args.classifier}")
+        return
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    detector = YOLO(args.detector)
+    detector = HandDetector()
     classifier, labels = load_classifier(args.classifier, device)
 
     # Behaviour state.
@@ -165,9 +158,17 @@ def main():
     tracking_on = False
 
     smoother = GestureSmoother(window=7)
-    smooth_yaw = 0.0    # low-pass filtered head angles (degrees)
-    smooth_pitch = 0.0
 
+    smooth_antenna_left = ANTENNAS_CLOSED[0]
+    smooth_antenna_right = ANTENNAS_CLOSED[1]
+    
+    smooth_yaw = 0.0
+    smooth_pitch = -10.0
+    target_yaw = 0.0
+    target_pitch = -10.0
+
+    track_hand_lost_counter = 0
+    
     # Create the window before connecting (avoids the viewer blocking).
     window = "Part 3 - interact"
     cv2.namedWindow(window)
@@ -176,23 +177,39 @@ def main():
     with ReachyMini() as mini:
         sound_player = SoundPlayer(mini)
         sound_player.start()
-        mini.goto_target(create_head_pose(), antennas=ANTENNAS_CLOSED, duration=1.0)
+        # mini.goto_target(create_head_pose(), antennas=ANTENNAS_CLOSED, duration=1.0)
+        mini.goto_target(create_head_pose(pitch=-10.0), antennas=np.deg2rad(ANTENNAS_CLOSED), duration=1.0)
+        mini.set_automatic_body_yaw(True)
+        pos, antennas = mini.client.get_current_joints()
 
+        # cv2.destroyAllWindows()
+        # return
+        lat = time.time()
         try:
             while True:
+                time_since_start = time.time() - lat
+                print(f"latency: {time_since_start:.2f} seconds")
+                lat = time.time()
+                
                 frame = mini.media.get_frame()
+                image_width = frame.shape[1]
+                image_height = frame.shape[0]
                 if frame is None:
                     continue
                 # The camera frame is read-only; copy it so we can draw on it.
                 frame = frame.copy()
 
-                result = detector(frame, conf=args.conf, verbose=False)[0]
-                hands = analyze_hands(result, classifier, labels, device, args.conf)
+                hands = analyze_hands(detector, frame, classifier, labels,
+                                      device, args.conf)
 
                 # The "command hand" is the right-most hand in the image.
                 command_hand = None
                 if hands:
+                    track_hand_lost_counter = 0
                     command_hand = max(hands, key=lambda h: h["mean_x"])
+                else:
+                    command_hand = None
+                    print("No hands detected")
 
                 # Both hands showing a heart?
                 heart_hands = [h for h in hands if h["gesture"] == "heart"]
@@ -204,7 +221,8 @@ def main():
 
                 # --- Update behaviour state from the gesture ---
                 if gesture == "point":
-                    sound_on = True
+                    # sound_on = True
+                    pass
                 elif gesture == "mute":
                     sound_on = False
                 elif gesture == "rock":
@@ -218,28 +236,47 @@ def main():
 
                 sound_player.set_active(sound_on)
                 antennas = ANTENNAS_OPEN if antennas_open else ANTENNAS_CLOSED
-
-                # --- Decide where the head looks ---
+                
+                smooth_antenna_left = 0.8 * smooth_antenna_left + 0.2 * antennas[0]
+                smooth_antenna_right = 0.8 * smooth_antenna_right + 0.2 * antennas[1]
+                
+                # --- Decide where the head looks by yaw and pitch RELATIVE command ---
                 # Priority: heart wave > tracking > neutral.
+                current_head_pos = mini.get_current_head_pose()
+                current_yaw, current_pitch, current_roll = scipy.spatial.transform.Rotation.from_matrix(current_head_pos[:3, :3]).as_euler('zyx', degrees=True)
+                
                 if both_hearts:
-                    wave_yaw = 20.0 * np.sin(2.0 * np.pi * 1.0 * time.time())
-                    head = create_head_pose(yaw=wave_yaw, degrees=True)
+                    pass
                 elif tracking_on and command_hand is not None:
                     hx, hy = command_hand["wrist_norm"]
-                    # Center the hand: turn head toward it. Flip a sign here if
-                    # the head moves the wrong way on your robot.
-                    target_yaw = (0.5 - hx) * 2.0 * MAX_YAW
-                    target_pitch = (hy - 0.5) * 2.0 * MAX_PITCH
-                    smooth_yaw = 0.8 * smooth_yaw + 0.2 * target_yaw
-                    smooth_pitch = 0.8 * smooth_pitch + 0.2 * target_pitch
-                    head = create_head_pose(yaw=smooth_yaw, pitch=smooth_pitch,
-                                            degrees=True)
+                    CAMERA_FOV_H_DEG = 60.0
+                    CAMERA_FOV_V_DEG = 45.0
+                    _im_target_yaw = -(hx - 0.5) * CAMERA_FOV_H_DEG
+                    target_yaw = current_yaw + _im_target_yaw
+                    
+                    _im_target_pitch = (hy - 0.5) * CAMERA_FOV_V_DEG
+                    target_pitch = current_pitch + _im_target_pitch
+                    
+                elif tracking_on and command_hand is None:
+                    # temporary lost, wait for 10 frames to confirm, keep the current command
+                    track_hand_lost_counter += 1
+                    if track_hand_lost_counter > 10:
+                        print("lost, stop tracking and reset the command")
+                        # lost, stop tracking and reset the command
+                        tracking_on = False
+                        target_yaw = 0.0
+                        target_pitch = -10.0
+                        track_hand_lost_counter = 0
                 else:
-                    smooth_yaw, smooth_pitch = 0.0, 0.0
-                    head = create_head_pose()
-
-                mini.set_target(head=head, antennas=antennas)
-
+                    target_yaw = 0.0
+                    target_pitch = -10.0
+                    
+                smooth_yaw = 0.8 * smooth_yaw + 0.2 * target_yaw
+                smooth_pitch = 0.8 * smooth_pitch + 0.2 * target_pitch
+                head = create_head_pose(yaw=smooth_yaw, pitch=smooth_pitch, degrees=True)
+                
+                mini.set_target(head=head, antennas=np.deg2rad([smooth_antenna_left, smooth_antenna_right]))
+                
                 # --- Draw the current state on screen ---
                 for hand in hands:
                     draw_hand(frame, hand["pixels"])
@@ -248,10 +285,12 @@ def main():
 
                 status = (f"cmd:{gesture} | sound:{'ON' if sound_on else 'off'} "
                           f"| antennas:{'open' if antennas_open else 'closed'} "
-                          f"| track:{'ON' if tracking_on else 'off'} "
+                          f"| track:{'ON' if tracking_on else 'off'} ({track_hand_lost_counter} lost) "
                           f"| heart:{'YES' if both_hearts else 'no'}")
+                                
                 draw_label(frame, status, (10, 30), color=(255, 255, 0))
-
+                
+                
                 cv2.imshow(window, frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
