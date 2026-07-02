@@ -91,7 +91,7 @@ RUN uv pip install --python $VIRTUAL_ENV "reachy-mini"
 RUN uv pip install --python $VIRTUAL_ENV "opencv-python"
 
 # Install Kyutai TTS and VLM dependencies
-RUN uv pip install --python $VIRTUAL_ENV torch torchvision torchcodec "numpy>=2.0.0" "scipy>=1.14.0" soundfile huggingface_hub pocket-tts transformers Pillow ultralytics
+RUN uv pip install --python $VIRTUAL_ENV torch torchvision torchcodec "numpy>=2.0.0" "scipy>=1.14.0" soundfile huggingface_hub pocket-tts transformers Pillow ultralytics onnxruntime
 
 # Install Silero VAD directly from PyPI and pre-cache the model
 RUN uv pip install --python $VIRTUAL_ENV "nvidia-cublas-cu12" "nvidia-cudnn-cu12==9.*"
@@ -100,17 +100,8 @@ RUN uv pip install --python $VIRTUAL_ENV "nvidia-cublas-cu12" "nvidia-cudnn-cu12
 # Pre-download the Pocket TTS model weights into the Docker image cache
 RUN /opt/reachy_mini_env/bin/python -c "from pocket_tts import TTSModel; TTSModel.load_model(language='english')"
 
-# # Pre-download the VLM weights (Safely downloads without loading into RAM)
-# RUN /opt/reachy_mini_env/bin/python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='openbmb/MiniCPM-V-4.6')"
-
 # Install accelerate TODO: move this above
 RUN uv pip install --python $VIRTUAL_ENV "accelerate"
-
-# Pre-cache Silero VAD
-# RUN /opt/reachy_mini_env/bin/python -c "from silero_vad import load_silero_vad; load_silero_vad()"
-
-# Pre-cache Faster-Whisper 'tiny.en' model
-# RUN /opt/reachy_mini_env/bin/python -c "from faster_whisper import download_model; download_model('tiny.en')"
 
 # Add venv to PATH and set up auto-activation
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
