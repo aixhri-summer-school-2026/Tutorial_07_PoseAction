@@ -8,7 +8,7 @@ Gesture -> behaviour:
     point  -> (reserved)           mute  -> stop sounds
     rock   -> open antennas        fist  -> close antennas
     peace  -> start pose control   stop  -> stop pose control
-    heart  -> (both hands) wave the head
+    hand_heart -> (both hands) wave the head
 
 Controls:
     q : quit
@@ -32,6 +32,9 @@ import torch
 import scipy
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
+
+from torchvision import transforms
+import onnxruntime
 
 from gesture_utils import classify_hand, draw_hand, draw_label, load_classifier
 from hand_detector import HandDetector
@@ -60,7 +63,6 @@ class HeadDetector:
     """Find the largest head in the frame using the SixDRepNet ONNX detector."""
 
     def __init__(self, detector_path):
-        import onnxruntime
 
         providers = onnxruntime.get_available_providers()
         session = onnxruntime.InferenceSession(detector_path, providers=providers)
@@ -84,17 +86,15 @@ class HeadDetector:
 
 
 class HeadPoseEstimator:
-    """Detect a face and estimate its (pitch, yaw, roll) in degrees."""
+    """Detect a face and estimate its (pitch, yaw, roll) in degrees.
+    Inspired by demo in main.py of SixDRepNet."""
 
     def __init__(self, model_path, detector_path, device):
-        from torchvision import transforms
-
         self.device = device
         checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         self.model = checkpoint["model"].float().fuse().to(device)
         self.model.eval()
 
-        import onnxruntime
         providers = onnxruntime.get_available_providers()
         session = onnxruntime.InferenceSession(detector_path, providers=providers)
         self.detector = util.FaceDetector(session=session)
@@ -296,7 +296,7 @@ def main():
                                       device, args.conf)
 
                 command_hand = max(hands, key=lambda h: h["mean_x"]) if hands else None
-                both_hearts = len([h for h in hands if h["gesture"] == "heart"]) >= 2
+                both_hearts = len([h for h in hands if h["gesture"] == "hand_heart"]) >= 2
 
                 raw_gesture = command_hand["gesture"] if command_hand else "no_gesture"
                 gesture = smoother.update(raw_gesture)

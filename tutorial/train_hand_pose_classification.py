@@ -128,7 +128,7 @@ def main():
             )
 
     test_acc = evaluate(model, test_loader, device)
-    print(f"\nBest val acc: {best_val:.3f} | test acc: {test_acc:.3f}")
+    print(f"\nBest val acc: {best_val:.3f} | test acc (last) : {test_acc:.3f}")
     print(f"Saved classifier to: {CLASSIFIER_PATH}")
 
 

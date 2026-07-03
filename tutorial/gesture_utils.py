@@ -20,7 +20,7 @@ import torch.nn as nn
 # ---------------------------------------------------------------------------
 # Gestures
 # ---------------------------------------------------------------------------
-# These are the 8 gestures used in the tutorial. The ORDER matters: the index
+# HaGRIDv2 class names used in this tutorial. The ORDER matters: the index
 # in this list is the integer label used everywhere (dataset, training, live).
 GESTURES = [
     "no_gesture",
@@ -30,24 +30,8 @@ GESTURES = [
     "point",
     "stop",
     "mute",
-    "heart",
+    "hand_heart",
 ]
-
-# The HaGRIDv2 annotations use their own names. This maps our simple names to
-# the label string found inside the annotation files.
-#   - "heart" -> "hand_heart2" is the *single hand* finger-heart. We use this
-#     one because Part 3 triggers the heart behaviour only when BOTH hands do
-#     it, so each hand on its own must look like a heart.
-HAGRID_LABEL_MAP = {
-    "no_gesture": "no_gesture",
-    "fist": "fist",
-    "peace": "peace",
-    "rock": "rock",
-    "point": "point",
-    "stop": "stop",
-    "mute": "mute",
-    "heart": "hand_heart2",
-}
 
 
 # ---------------------------------------------------------------------------

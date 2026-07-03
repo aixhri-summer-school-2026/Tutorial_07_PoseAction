@@ -8,7 +8,7 @@ import cv2
 import numpy
 import torch
 import tqdm
-from timm import utils
+# from timm import utils
 from torch.utils import data
 from torchvision import transforms
 
@@ -215,10 +215,11 @@ def demo(args):
                                     transforms.ToTensor(),
                                     normalize])
 
-    model = torch.load(f='./weights/best.pt', map_location='cuda')
+    here = os.path.dirname(os.path.abspath(__file__))
+    model = torch.load(f=os.path.join(here, 'weights', 'best.pt'), map_location='cuda', weights_only=False)
     model = model['model'].float().fuse()
 
-    detector = util.FaceDetector('./weights/detection.onnx')
+    detector = util.FaceDetector(os.path.join(here, 'weights', 'detection.onnx'))
 
     model.half()
     model.eval()

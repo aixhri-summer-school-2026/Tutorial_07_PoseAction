@@ -1,6 +1,16 @@
 # VSCode
 .vscode/
+
+# Tutorial
+tutorial/runs/
+tutorial/weights/gesture_*.pt
+tutorial/old/
+
+# Data
 HaGRIDv2_annotations/
+
+# Illustrations temporary files
+doc_illustrations/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
