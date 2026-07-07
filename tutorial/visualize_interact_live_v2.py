@@ -73,10 +73,15 @@ def build_pose_tracker():
     device = "cuda" if "CUDAExecutionProvider" in ort.get_available_providers() else "cpu"
     print(f"Loading the RTMLib whole-body tracker on {device}...")
 
+    # You can replace those path by URLs like : "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip"
+    # and the ehckpoints will be downloaded automatically
+    det_onnx_model = "/app/downloads/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx"
+    pose_onnx_model = "/app/downloads/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx"
+    
     solution_kwargs = {
-        "det": "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip",  # noqa: E501
+        "det": det_onnx_model,
         "det_input_size": (640, 640),
-        "pose": "https://download.openmmlab.com/mmpose/v1/projects/rtmw/onnx_sdk/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.zip",  # noqa: E501
+        "pose": pose_onnx_model,
         "pose_input_size": (288, 384),
     }
 
