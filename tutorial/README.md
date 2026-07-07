@@ -111,7 +111,7 @@ For mirroring mode, `tutorial/SixDRepNet/weights/best.pt` is also required.
 
 ## Troubleshooting
 
-- If you pulled or built the docker **before 08/07/2026**, the whole-body ONNX models are not baked into the image. Either rebuild (`make build`) or do the following:
+- If you pulled or built the docker **before 08/07/2026**, the whole-body ONNX models are not baked into the image. Either rebuild (`make build`) or do the following (faster):
 
 ```bash
 # 1. On the host (outside the docker): download and extract the models into tutorial/
@@ -131,6 +131,8 @@ make shell
 mkdir -p /app/downloads
 mv /app/tutorial/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx /app/downloads/
 mv /app/tutorial/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx /app/downloads/
+
+# 3. Install onnxruntime-gpu and fix LD_LIBRARY_PATH
 source tutorial/update.sh
 ```
 
