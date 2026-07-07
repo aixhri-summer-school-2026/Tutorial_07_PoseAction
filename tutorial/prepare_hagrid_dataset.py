@@ -23,7 +23,7 @@ import os
 
 import numpy as np
 
-from gesture_utils import GESTURES, NUM_KEYPOINTS
+from keypoints_utils import GESTURES, NUM_KEYPOINTS
 
 ANNOTATIONS_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

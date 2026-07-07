@@ -20,7 +20,7 @@ import onnxruntime as ort
 from reachy_mini import ReachyMini
 from rtmlib import PoseTracker, Wholebody
 
-from gesture_utils import (
+from keypoints_utils import (
     LEFT_HAND_IDS,
     LEFT_WRIST_ID,
     RIGHT_HAND_IDS,
@@ -31,10 +31,6 @@ from gesture_utils import (
     get_hand_bbox,
     get_face_bbox,
 )
-
-
-
-SCORE_THRESHOLD = 0.5
 
 
 def build_pose_tracker():
@@ -74,21 +70,7 @@ def wait_for_first_frame(mini, timeout_s=10.0):
     return frame
 
 
-def filter_hand_keypoints(scores, threshold):
-    """Hide hand landmarks when their wrist is not confidently detected."""
-    if scores.size == 0 or scores.shape[1] != 133:
-        return scores
-
-    filtered = scores.copy()
-    for det in range(filtered.shape[0]):
-        if filtered[det, LEFT_WRIST_ID] < threshold:
-            filtered[det, LEFT_HAND_IDS] = 0.0
-        if filtered[det, RIGHT_WRIST_ID] < threshold:
-            filtered[det, RIGHT_HAND_IDS] = 0.0
-    return filtered
-
-
-def main():
+def main(args):
     cv2.namedWindow("Part 1 - live whole body")
     pose_tracker = build_pose_tracker()
 
@@ -105,26 +87,30 @@ def main():
 
                 frame = frame.copy()
                 keypoints, scores = pose_tracker(frame)
-                scores = filter_hand_keypoints(scores, SCORE_THRESHOLD)
+                for det in range(scores.shape[0]):
+                    if scores[det, LEFT_WRIST_ID] < args.score_threshold:
+                        scores[det, LEFT_HAND_IDS] = 0.0
+                    if scores[det, RIGHT_WRIST_ID] < args.score_threshold:
+                        scores[det, RIGHT_HAND_IDS] = 0.0
 
                 for person_kpts, person_scores in zip(keypoints, scores):
                     draw_skeleton(
                         frame,
                         person_kpts,
                         scores=person_scores,
-                        kpt_thr=SCORE_THRESHOLD,
+                        kpt_thr=args.score_threshold,
                         hands_style=args.hands_style,
                     )
                     left_bbox = get_hand_bbox(
                         person_kpts,
                         scores=person_scores,
-                        kpt_thr=SCORE_THRESHOLD,
+                        kpt_thr=args.score_threshold,
                         side="left",
                     )
                     right_bbox = get_hand_bbox(
                         person_kpts,
                         scores=person_scores,
-                        kpt_thr=SCORE_THRESHOLD,
+                        kpt_thr=args.score_threshold,
                         side="right",
                     )
                     draw_bbox(frame, left_bbox, color=(100, 100, 255))
@@ -132,7 +118,7 @@ def main():
                     face_bbox = get_face_bbox(
                         person_kpts,
                         scores=person_scores,
-                        kpt_thr=SCORE_THRESHOLD,
+                        kpt_thr=args.score_threshold,
                     )
                     draw_bbox(frame, face_bbox, color=(255, 100, 100))
 
@@ -155,5 +141,6 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--hands_style", type=str, default="mediapipe", choices=["mediapipe", "coco133"])
+    parser.add_argument("--score_threshold", type=float, default=0.5)
     args = parser.parse_args()
-    main()
+    main(args)
