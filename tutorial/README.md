@@ -248,4 +248,53 @@ sudo chmod 666 /dev/video2   # replace with your desired cam device
 ```
 
 ## References
-TODO : add references, 6DRep, Hagrid, rtmpose, yolo
+
+### Whole-body pose (Parts 1–4)
+
+- **RTMLib** — lightweight ONNX runtime wrapper used in this tutorial  
+  [https://github.com/Tau-J/rtmlib](https://github.com/Tau-J/rtmlib)
+
+- **MMPose** — OpenMMLab pose estimation toolbox  
+  [https://github.com/open-mmlab/mmpose](https://github.com/open-mmlab/mmpose)
+
+- **RTMPose** — real-time multi-person pose estimation (base architecture)  
+  Jiang et al., *RTMPose: Real-Time Multi-Person Pose Estimation based on MMPose*, arXiv:2303.07399  
+  [https://arxiv.org/abs/2303.07399](https://arxiv.org/abs/2303.07399)
+
+- **RTMW** — whole-body model used here (133 keypoints: body, face, hands, feet)  
+  Jiang et al., *RTMW: Real-Time Multi-Person 2D and 3D Whole-body Pose Estimation*, arXiv:2407.08634  
+  [https://arxiv.org/abs/2407.08634](https://arxiv.org/abs/2407.08634)
+
+- **YOLOX** — person detector in the top-down pipeline  
+  Ge et al., *YOLOX: Exceeding YOLO Series in 2021*, arXiv:2107.08430  
+  [https://arxiv.org/abs/2107.08430](https://arxiv.org/abs/2107.08430) · [https://github.com/Megvii-BaseDetection/YOLOX](https://github.com/Megvii-BaseDetection/YOLOX)
+
+- **COCO-WholeBody** — 133-keypoint annotation format  
+  Jin et al., *Whole-Body Human Pose Estimation in the Wild*, ECCV 2020, arXiv:2007.11858  
+  [https://arxiv.org/abs/2007.11858](https://arxiv.org/abs/2007.11858) · [https://github.com/jin-s13/COCO-WholeBody](https://github.com/jin-s13/COCO-WholeBody)
+
+### Gesture classification (Part 2)
+
+- **HaGRID** — original hand gesture dataset  
+  Kapitanov et al., *HaGRID — HAnd Gesture Recognition Image Dataset*, WACV 2024  
+  [https://arxiv.org/abs/2206.08219](https://arxiv.org/abs/2206.08219) · [https://github.com/hukenovs/hagrid](https://github.com/hukenovs/hagrid)
+
+- **HaGRIDv2** — extended dataset (annotations with landmarks used in this tutorial)  
+  Nuzhdin et al., *HaGRIDv2: 1M Images for Static and Dynamic Hand Gesture Recognition*, arXiv:2412.01508  
+  [https://arxiv.org/abs/2412.01508](https://arxiv.org/abs/2412.01508)
+
+- **MediaPipe hand topology** — 21-keypoint hand skeleton used for drawing and the GCN graph  
+  [https://developers.google.com/mediapipe/solutions/vision/hand_landmarker](https://developers.google.com/mediapipe/solutions/vision/hand_landmarker)
+
+- **GCN** — graph convolution layer in `HandGCN`  
+  Kipf & Welling, *Semi-Supervised Classification with Graph Convolutional Networks*, ICLR 2017, arXiv:1609.02907  
+  [https://arxiv.org/abs/1609.02907](https://arxiv.org/abs/1609.02907)
+
+### Head pose (Parts 3–4)
+
+- **6DRepNet / SixDRepNet** — head pose estimation for mirroring mode  
+  Hempel et al., *6D Rotation Representation for Unconstrained Head Pose Estimation*, ICIP 2022, arXiv:2202.12555  
+  [https://arxiv.org/abs/2202.12555](https://arxiv.org/abs/2202.12555) · [https://github.com/thohemp/6DRepNet](https://github.com/thohemp/6DRepNet)
+
+  Extended journal version: Hempel et al., *Toward Robust and Unconstrained Full Range of Rotation Head Pose Estimation*, IEEE TIP 2024  
+  [https://arxiv.org/abs/2309.07654](https://arxiv.org/abs/2309.07654)
