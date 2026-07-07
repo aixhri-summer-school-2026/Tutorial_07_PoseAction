@@ -28,16 +28,26 @@ from collections import deque, Counter
 
 import cv2
 import numpy as np
+import onnxruntime as ort
 import torch
 import scipy
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
-
+from rtmlib import PoseTracker, Wholebody
 from torchvision import transforms
-import onnxruntime
 
-from gesture_utils import classify_hand, draw_hand, draw_label, load_classifier
-from hand_detector import HandDetector
+from handkeypoints_infer import classify_hand, load_classifier
+from keypoints_utils import (
+    LEFT_HAND_IDS,
+    LEFT_WRIST_ID,
+    RIGHT_HAND_IDS,
+    RIGHT_WRIST_ID,
+    draw_bbox,
+    draw_label,
+    draw_skeleton,
+    get_hand_bbox,
+    get_face_bbox,
+)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CLASSIFIER = os.path.join(HERE, "weights", "gesture_classifier.pt")
@@ -47,7 +57,6 @@ sys.path.insert(0, SIXD_DIR)
 from utils import util  # noqa: E402  (import after sys.path tweak)
 
 SIXD_MODEL = os.path.join(SIXD_DIR, "weights", "best.pt")
-SIXD_DETECTOR = os.path.join(SIXD_DIR, "weights", "detection.onnx")
 
 ANTENNAS_CLOSED = [-180, 180]
 ANTENNAS_OPEN = [0, 0]
@@ -57,47 +66,72 @@ CAMERA_FOV_V_DEG = 45.0
 
 MIRROR_GAIN = 1.0
 MAX_YAW = 30.0
+SCORE_THRESHOLD = 0.5
 
 
-class HeadDetector:
-    """Find the largest head in the frame using the SixDRepNet ONNX detector."""
+def build_pose_tracker():
+    device = "cuda" if "CUDAExecutionProvider" in ort.get_available_providers() else "cpu"
+    print(f"Loading the RTMLib whole-body tracker on {device}...")
 
-    def __init__(self, detector_path):
+    # You can replace those path by URLs like : "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip"
+    # and the ehckpoints will be downloaded automatically
+    det_onnx_model = "/app/downloads/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx"
+    pose_onnx_model = "/app/downloads/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx"
+    
+    solution_kwargs = {
+        "det": det_onnx_model,
+        "det_input_size": (640, 640),
+        "pose": pose_onnx_model,
+        "pose_input_size": (288, 384),
+        "biggest_n_boxes_only": 2,
+    }
 
-        providers = onnxruntime.get_available_providers()
-        session = onnxruntime.InferenceSession(detector_path, providers=providers)
-        self.detector = util.FaceDetector(session=session)
+    return PoseTracker(
+        Wholebody,
+        det_frequency=1,
+        backend="onnxruntime",
+        device=device,
+        to_openpose=False,
+        biggest_n_boxes_only=2,
+        solution_kwargs=solution_kwargs,
+    )
 
-    def detect_largest(self, frame):
-        """Return ((cx, cy) normalized, pixel box) for the biggest head, or None."""
-        boxes = self.detector.detect(frame, (640, 640))
-        if boxes is None or len(boxes) == 0:
-            return None
 
-        boxes = boxes.astype("int32")
-        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-        box = boxes[int(np.argmax(areas))]
-        x_min, y_min, x_max, y_max = box[0], box[1], box[2], box[3]
+def get_largest_face_bbox(keypoints, scores, kpt_thr):
+    """Return the largest face box found across all detected people."""
+    best_bbox = None
+    best_area = 0
 
-        h, w = frame.shape[:2]
-        cx = (x_min + x_max) / 2.0 / w
-        cy = (y_min + y_max) / 2.0 / h
-        return (cx, cy), (x_min, y_min, x_max, y_max)
+    for person_kpts, person_scores in zip(keypoints, scores):
+        bbox = get_face_bbox(person_kpts, person_scores, kpt_thr=kpt_thr)
+        if bbox is None:
+            continue
+        x1, y1, x2, y2 = bbox
+        area = (x2 - x1) * (y2 - y1)
+        if area > best_area:
+            best_area = area
+            best_bbox = bbox
+
+    return best_bbox
+
+
+def face_bbox_center(bbox, frame_shape):
+    """Return normalized face center and the pixel box."""
+    h, w = frame_shape[:2]
+    x1, y1, x2, y2 = bbox
+    cx = (x1 + x2) / 2.0 / w
+    cy = (y1 + y2) / 2.0 / h
+    return (cx, cy), bbox
 
 
 class HeadPoseEstimator:
-    """Detect a face and estimate its (pitch, yaw, roll) in degrees.
-    Inspired by demo in main.py of SixDRepNet."""
+    """Estimate (pitch, yaw, roll) from a face crop using SixDRepNet."""
 
-    def __init__(self, model_path, detector_path, device):
+    def __init__(self, model_path, device):
         self.device = device
         checkpoint = torch.load(model_path, map_location=device, weights_only=False)
         self.model = checkpoint["model"].float().fuse().to(device)
         self.model.eval()
-
-        providers = onnxruntime.get_available_providers()
-        session = onnxruntime.InferenceSession(detector_path, providers=providers)
-        self.detector = util.FaceDetector(session=session)
 
         self.input_size = 224
         self.transform = transforms.Compose([
@@ -109,19 +143,11 @@ class HeadPoseEstimator:
         ])
 
     @torch.no_grad()
-    def estimate(self, frame):
-        """Return (pitch, yaw, roll, box) for the biggest face, or None."""
+    def estimate(self, frame, box):
+        """Return (pitch, yaw, roll, box) for the given face box, or None."""
         from PIL import Image
 
-        boxes = self.detector.detect(frame, (640, 640))
-        if boxes is None or len(boxes) == 0:
-            return None
-
-        boxes = boxes.astype("int32")
-        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-        box = boxes[int(np.argmax(areas))]
-
-        x_min, y_min, x_max, y_max = box[0], box[1], box[2], box[3]
+        x_min, y_min, x_max, y_max = box
         box_w = abs(x_max - x_min)
         box_h = abs(y_max - y_min)
         x_min = max(0, x_min - int(0.2 * box_h))
@@ -204,19 +230,44 @@ class SoundPlayer:
             time.sleep(chunk_seconds * 0.5)
 
 
-def analyze_hands(detector, frame, classifier, labels, device, conf_threshold):
-    """Detect and classify every hand in the frame."""
+def analyze_hands(keypoints, scores, frame_shape, classifier, labels, device,
+                  kpt_thr, conf_threshold, track_ids):
+    """Classify every visible hand from the whole-body pose."""
+    h, w = frame_shape[:2]
+    scale = np.array([w, h], dtype=np.float32)
     hands = []
-    for hand in detector.detect(frame):
-        gesture, confidence = classify_hand(classifier, labels, hand["norm"], device)
-        if confidence < conf_threshold:
-            gesture = "no_gesture"
-        hands.append({
-            "gesture": gesture,
-            "confidence": confidence,
-            "pixels": hand["pixels"],
-            "mean_x": hand["mean_x"],
-        })
+
+    for det_idx, (person_kpts, person_scores, track_id) in enumerate(zip(keypoints, scores, track_ids)):
+        for hand_ids, wrist_id, handedness in (
+            (LEFT_HAND_IDS, LEFT_WRIST_ID, "left"),
+            (RIGHT_HAND_IDS, RIGHT_WRIST_ID, "right"),
+        ):
+            if person_scores[wrist_id] < kpt_thr:
+                continue
+            hand_scores = person_scores[hand_ids]
+            if (hand_scores >= kpt_thr).sum() < 5:
+                continue
+
+            hand_px = person_kpts[hand_ids].astype(np.float32)
+            person_size = (person_kpts[:, 0].max() - person_kpts[:, 0].min()) * (person_kpts[:, 1].max() - person_kpts[:, 1].min())
+            gesture, confidence = classify_hand(
+                classifier, labels, hand_px / scale, device)
+            if confidence < conf_threshold:
+                gesture = "no_gesture"
+                
+            hand_bbox = get_hand_bbox(person_kpts, person_scores, side = handedness)
+
+            hands.append({
+                "det_idx": det_idx,
+                "track_id": track_id,
+                "gesture": gesture,
+                "confidence": confidence,
+                "pixels": hand_px,
+                "handedness": handedness,
+                "person_size": person_size,
+                "hand_bbox": hand_bbox,
+            })
+
     return hands
 
 
@@ -239,20 +290,11 @@ def main():
     )
     args = parser.parse_args()
 
-    required_paths = [args.classifier, SIXD_DETECTOR]
-    if args.mode == "mirroring":
-        required_paths.append(SIXD_MODEL)
-    for path in required_paths:
-        if not os.path.exists(path):
-            print(f"[ERROR] missing file: {path}")
-            return
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    hand_detector = HandDetector()
-    head_detector = HeadDetector(SIXD_DETECTOR)
+    pose_tracker = build_pose_tracker()
     head_estimator = None
     if args.mode == "mirroring":
-        head_estimator = HeadPoseEstimator(SIXD_MODEL, SIXD_DETECTOR, device)
+        head_estimator = HeadPoseEstimator(SIXD_MODEL, device)
     classifier, labels = load_classifier(args.classifier, device)
 
     sound_on = False
@@ -273,11 +315,10 @@ def main():
     head_box = None
     head_pose_label = None
 
-    mode_label = "head tracking" if args.mode == "tracking" else "head mirroring"
-    window = f"Part 4 - {mode_label}"
+    window = f"Part 4 - {args.mode}"
     cv2.namedWindow(window)
 
-    print(f"Connecting to Reachy Mini ({mode_label})... press 'q' to quit.")
+    print(f"Connecting to Reachy Mini... press 'q' to quit.")
     with ReachyMini() as mini:
         sound_player = SoundPlayer(mini)
         sound_player.start()
@@ -292,11 +333,27 @@ def main():
                     continue
                 frame = frame.copy()
 
-                hands = analyze_hands(hand_detector, frame, classifier, labels,
-                                      device, args.conf)
+                keypoints, scores = pose_tracker(frame)
+                track_ids = pose_tracker.track_ids_last_frame # the tracking is very basic (greedy IoU) and can be disfunctional, see rtmlib/tools/solution/pose_tracker.py to improve it ! 
+                for det in range(scores.shape[0]):
+                    if scores[det, LEFT_WRIST_ID] < SCORE_THRESHOLD:
+                        scores[det, LEFT_HAND_IDS] = 0.0
+                    if scores[det, RIGHT_WRIST_ID] < SCORE_THRESHOLD:
+                        scores[det, RIGHT_HAND_IDS] = 0.0
 
-                command_hand = max(hands, key=lambda h: h["mean_x"]) if hands else None
-                both_hearts = len([h for h in hands if h["gesture"] == "hand_heart"]) >= 2
+                hands = analyze_hands(
+                    keypoints, scores, frame.shape, classifier, labels,
+                    device, SCORE_THRESHOLD, args.conf, track_ids)
+                
+                # we only take left hand of the biggest person
+                biggest_person_size = max(hands, key=lambda h: h["person_size"])["person_size"] if hands else None
+                command_hand = [h for h in hands if (h["person_size"] == biggest_person_size and h["handedness"] == "left")] if biggest_person_size else None
+                if command_hand and len(command_hand) > 0:
+                    command_hand = command_hand[0]
+                    draw_bbox(frame, command_hand["hand_bbox"], color=(0, 255, 0))
+                
+                # are there both hands of the biggest person doing the heart gesture?
+                both_hearts = len([h for h in hands if (h["person_size"] == biggest_person_size and h["gesture"] == "hand_heart")]) >= 2
 
                 raw_gesture = command_hand["gesture"] if command_hand else "no_gesture"
                 gesture = smoother.update(raw_gesture)
@@ -322,21 +379,22 @@ def main():
 
                 head_box = None
                 head_pose_label = None
+                face_bbox = get_largest_face_bbox(keypoints, scores, SCORE_THRESHOLD)
 
                 if both_hearts:
                     wave_yaw = 20.0 * np.sin(2.0 * np.pi * 1.0 * time.time())
                     target_yaw = wave_yaw
                     target_pitch = -10.0
+                    
                 elif pose_active and args.mode == "tracking":
-                    head_result = head_detector.detect_largest(frame)
                     current_head_pos = mini.get_current_head_pose()
                     current_yaw, current_pitch, _ = scipy.spatial.transform.Rotation.from_matrix(
                         current_head_pos[:3, :3]
                     ).as_euler("zyx", degrees=True)
 
-                    if head_result is not None:
+                    if face_bbox is not None:
                         track_lost_counter = 0
-                        (hx, hy), head_box = head_result
+                        (hx, hy), head_box = face_bbox_center(face_bbox, frame.shape)
                         _im_target_yaw = -(hx - 0.5) * (CAMERA_FOV_H_DEG * 1.3)
                         target_yaw = current_yaw + _im_target_yaw
                         _im_target_pitch = (hy - 0.5) * (CAMERA_FOV_V_DEG * 1.3)
@@ -349,22 +407,29 @@ def main():
                             target_yaw = 0.0
                             target_pitch = -10.0
                             track_lost_counter = 0
+                            
                 elif pose_active and args.mode == "mirroring":
-                    pose = head_estimator.estimate(frame)
-                    if pose is not None:
-                        track_lost_counter = 0
-                        pitch, yaw, roll, head_box = pose
-                        target_yaw = clamp(MIRROR_GAIN * yaw, MAX_YAW)
-                        target_pitch = -10.0
-                        head_pose_label = f"yaw:{yaw:.1f} pitch:{pitch:.1f} roll:{roll:.1f}"
+                    if face_bbox is not None:
+                        pose = head_estimator.estimate(frame, face_bbox)
+                        if pose is not None:
+                            track_lost_counter = 0
+                            pitch, yaw, roll, head_box = pose
+                            target_yaw = clamp(MIRROR_GAIN * yaw, MAX_YAW)
+                            target_pitch = -10.0
+                            head_pose_label = (
+                                f"yaw:{yaw:.1f} pitch:{pitch:.1f} roll:{roll:.1f}"
+                            )
+                        else:
+                            track_lost_counter += 1
                     else:
                         track_lost_counter += 1
-                        if track_lost_counter > 10:
-                            print("Head lost, stop mirroring and reset.")
-                            pose_active = False
-                            target_yaw = 0.0
-                            target_pitch = -10.0
-                            track_lost_counter = 0
+
+                    if track_lost_counter > 10:
+                        print("Head lost, stop mirroring and reset.")
+                        pose_active = False
+                        target_yaw = 0.0
+                        target_pitch = -10.0
+                        track_lost_counter = 0
                 else:
                     target_yaw = 0.0
                     target_pitch = -10.0
@@ -376,14 +441,22 @@ def main():
                 mini.set_target(head=head,
                                 antennas=np.deg2rad([smooth_antenna_left, smooth_antenna_right]))
 
+                for person_kpts, person_scores in zip(keypoints, scores):
+                    draw_skeleton(
+                        frame,
+                        person_kpts,
+                        scores=person_scores,
+                        kpt_thr=SCORE_THRESHOLD,
+                        include_face=True,
+                    )
+
                 for hand in hands:
-                    draw_hand(frame, hand["pixels"])
                     wrist = hand["pixels"][0]
                     draw_label(frame, hand["gesture"], (wrist[0], wrist[1] - 10))
 
                 if head_box is not None:
+                    draw_bbox(frame, head_box, color=(255, 0, 0))
                     x1, y1, x2, y2 = head_box
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
                     cx = (x1 + x2) // 2
                     cy = (y1 + y2) // 2
                     cv2.circle(frame, (cx, cy), 4, (0, 255, 255), -1)

@@ -5,6 +5,7 @@
 tutorial/runs/
 tutorial/weights/gesture_*.pt
 tutorial/old/
+tutorial_complete/
 
 # Data
 HaGRIDv2_annotations/

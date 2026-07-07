@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y \
     python3-gi \
     python3-gi-cairo \
     libsndfile1 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Create the non-root user and add to dialout group for USB access
@@ -90,24 +91,51 @@ RUN uv pip install --python $VIRTUAL_ENV "reachy-mini"
 # Install opencv
 RUN uv pip install --python $VIRTUAL_ENV "opencv-python"
 
-# Install Kyutai TTS and VLM dependencies
-RUN uv pip install --python $VIRTUAL_ENV torch torchvision torchcodec "numpy>=2.0.0" "scipy>=1.14.0" soundfile huggingface_hub pocket-tts transformers Pillow ultralytics onnxruntime
+# Install dependencies
+RUN uv pip install --python $VIRTUAL_ENV torch torchvision torchcodec "numpy>=2.0.0" "scipy>=1.14.0" soundfile huggingface_hub pocket-tts transformers Pillow ultralytics
 
-# Install Silero VAD directly from PyPI and pre-cache the model
-RUN uv pip install --python $VIRTUAL_ENV "nvidia-cublas-cu12" "nvidia-cudnn-cu12==9.*"
+# Install NVIDIA CUDA libraries and onnxruntime-gpu for GPU inference (see tutorial/update.sh)
+RUN uv pip install --python $VIRTUAL_ENV \
+    "nvidia-cublas-cu12" "nvidia-cudnn-cu12==9.*" \
+    "onnxruntime-gpu==1.19.2" \
+    nvidia-cuda-runtime-cu12 \
+    nvidia-curand-cu12 \
+    nvidia-cufft-cu12 \
+    nvidia-cuda-nvrtc-cu12
 # RUN uv pip install --python $VIRTUAL_ENV "silero-vad" "faster-whisper"
-
-# Pre-download the Pocket TTS model weights into the Docker image cache
-RUN /opt/reachy_mini_env/bin/python -c "from pocket_tts import TTSModel; TTSModel.load_model(language='english')"
 
 # Install accelerate TODO: move this above
 RUN uv pip install --python $VIRTUAL_ENV "accelerate"
 
+# Pre-download RTMLib whole-body models (see visualize_wholebody_live.py)
+USER root
+RUN apt-get update && apt-get install -y unzip
+RUN mkdir -p /app/downloads && \
+    wget -q -P /app/downloads \
+      "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip" \
+      "https://download.openmmlab.com/mmpose/v1/projects/rtmw/onnx_sdk/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.zip" && \
+    unzip -q /app/downloads/yolox_m_8xb8-300e_humanart-c2c7a14a.zip -d /app/downloads/yolox_det && \
+    unzip -q /app/downloads/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.zip -d /app/downloads/rtmw_pose && \
+    mv "$(find /app/downloads/yolox_det -name end2end.onnx)" /app/downloads/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx && \
+    mv "$(find /app/downloads/rtmw_pose -name end2end.onnx)" /app/downloads/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx && \
+    rm -rf /app/downloads/*.zip /app/downloads/yolox_det /app/downloads/rtmw_pose && \
+    chown -R reachy:reachy /app/downloads
+USER reachy
+
 # Add venv to PATH and set up auto-activation
 ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 
-# Add Faster-Whisper CUDA libraries to path
-# ENV LD_LIBRARY_PATH="/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/cudnn/lib:${LD_LIBRARY_PATH}"
+
+# Register NVIDIA libraries system-wide and mirror tutorial/update.sh for interactive shells
+USER root
+RUN /opt/reachy_mini_env/bin/python -c "\
+import glob; \
+paths = glob.glob('/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/*/lib'); \
+open('/etc/ld.so.conf.d/reachy-nvidia.conf', 'w').write('\n'.join(paths) + '\n')" && \
+    ldconfig
+USER reachy
+RUN NVIDIA_LIBS=$(/opt/reachy_mini_env/bin/python -c "import glob; print(':'.join(glob.glob('/opt/reachy_mini_env/lib/python3.12/site-packages/nvidia/*/lib')))") && \
+    echo "export LD_LIBRARY_PATH=\"${NVIDIA_LIBS}\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\"" >> /home/reachy/.bashrc
 
 RUN echo "source /opt/reachy_mini_env/bin/activate" >> /home/reachy/.bashrc
 

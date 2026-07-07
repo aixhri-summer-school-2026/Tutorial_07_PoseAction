@@ -1,6 +1,6 @@
 # Play with Reachy
 
-Using hand pose estimation and action recognition to interact with an expressive Reachy Mini robot (AIxHRI Summer School 2026).
+Using whole-body pose estimation and gesture recognition to interact with an expressive Reachy Mini robot (AIxHRI Summer School 2026).
 
 You will find here all the install instructions. If you already have the docker use `make run` then `make shell`.
 The instructions regarding the tutorial are in [tutorial](https://github.com/aixhri-summer-school-2026/Tutorial_07_PoseAction/blob/main/tutorial/README.md).
@@ -28,7 +28,7 @@ make install-rules
 
 If group permissions were updated, log out and log back in once.
 
-## Build and run
+## Build the docker (if you have not pulled it)
 
 Build the image locally:
 
@@ -36,6 +36,7 @@ Build the image locally:
 make build
 ```
 
+## Run the docker
 Start the Reachy Mini daemon container:
 
 ```bash
