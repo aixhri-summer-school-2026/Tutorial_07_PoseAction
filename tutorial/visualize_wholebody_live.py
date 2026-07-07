@@ -11,6 +11,7 @@ Run (inside the container shell, display forwarded like the tests):
     python tutorial/visualize_wholebody_live.py
 """
 
+
 import sys
 import time
 import argparse
@@ -31,6 +32,25 @@ from keypoints_utils import (
     get_hand_bbox,
     get_face_bbox,
 )
+
+
+# Utils to handle the input source (webcam or reachy_mini)
+class FakeCamera:
+    def __init__(self):
+        self.frame = None
+    def isOpened(self):
+        return True
+
+class FakeContext:
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+
 
 
 def build_pose_tracker():
@@ -56,91 +76,89 @@ def build_pose_tracker():
     return tracker
 
 
-def wait_for_first_frame(mini, timeout_s=10.0):
-    """Wait until the camera produces a frame or fail after a timeout."""
-    start_time = time.time()
-    frame = mini.media.get_frame()
-    while frame is None:
-        if time.time() - start_time > timeout_s:
-            print("[FAIL] Camera timeout. No frames received.")
-            sys.exit(1)
-        print("Waiting for camera frames...")
-        time.sleep(0.5)
-        frame = mini.media.get_frame()
-    return frame
-
-
 def main(args):
+    
+    # Handle the input source (webcam or reachy_mini)
+    if args.use_input == "webcam":
+        cap = cv2.VideoCapture(0)
+        ctx = FakeContext
+    elif args.use_input == "reachy_mini":
+        ctx = ReachyMini
+        cap = FakeCamera()
+
     cv2.namedWindow("Part 1 - live whole body")
     pose_tracker = build_pose_tracker()
 
-    print("Connecting to Reachy Mini camera... press 'q' to quit.")
-    with ReachyMini() as mini:
-        frame = wait_for_first_frame(mini)
-        print(f"[PASS] Camera active. Resolution: {frame.shape}")
-
-        try:
-            while True:
+    print(f"Connecting to {args.use_input} camera... press 'q' to quit.")
+    with ctx() as mini:
+        while cap.isOpened():
+            
+            # Get the frame from the input source
+            if args.use_input == "reachy_mini":
                 frame = mini.media.get_frame()
-                if frame is None:
-                    continue
-
-                frame = frame.copy()
-                keypoints, scores = pose_tracker(frame)
-                for det in range(scores.shape[0]):
-                    if scores[det, LEFT_WRIST_ID] < args.score_threshold:
-                        scores[det, LEFT_HAND_IDS] = 0.0
-                    if scores[det, RIGHT_WRIST_ID] < args.score_threshold:
-                        scores[det, RIGHT_HAND_IDS] = 0.0
-
-                for person_kpts, person_scores in zip(keypoints, scores):
-                    draw_skeleton(
-                        frame,
-                        person_kpts,
-                        scores=person_scores,
-                        kpt_thr=args.score_threshold,
-                        hands_style=args.hands_style,
-                    )
-                    left_bbox = get_hand_bbox(
-                        person_kpts,
-                        scores=person_scores,
-                        kpt_thr=args.score_threshold,
-                        side="left",
-                    )
-                    right_bbox = get_hand_bbox(
-                        person_kpts,
-                        scores=person_scores,
-                        kpt_thr=args.score_threshold,
-                        side="right",
-                    )
-                    draw_bbox(frame, left_bbox, color=(100, 100, 255))
-                    draw_bbox(frame, right_bbox, color=(100, 255, 100))
-                    face_bbox = get_face_bbox(
-                        person_kpts,
-                        scores=person_scores,
-                        kpt_thr=args.score_threshold,
-                    )
-                    draw_bbox(frame, face_bbox, color=(255, 100, 100))
-
-                draw_label(
-                    frame,
-                    f"people count: {keypoints.shape[0]}",
-                    (10, 30),
-                    color=(255, 255, 0),
-                )
-
-                cv2.imshow("Part 1 - live whole body", frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+            elif args.use_input == "webcam":
+                success, frame = cap.read()
+                if not success:
                     break
-        except KeyboardInterrupt:
-            print("Interrupted. Closing viewer...")
-        finally:
-            cv2.destroyAllWindows()
+            
+            if frame is None:
+                continue
+
+            frame = frame.copy()
+            keypoints, scores = pose_tracker(frame)
+            for det in range(scores.shape[0]):
+                if scores[det, LEFT_WRIST_ID] < args.score_threshold:
+                    scores[det, LEFT_HAND_IDS] = 0.0
+                if scores[det, RIGHT_WRIST_ID] < args.score_threshold:
+                    scores[det, RIGHT_HAND_IDS] = 0.0
+
+            for person_kpts, person_scores in zip(keypoints, scores):
+                draw_skeleton(
+                    frame,
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                    hands_style=args.hands_style,
+                )
+                left_bbox = get_hand_bbox(
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                    side="left",
+                )
+                right_bbox = get_hand_bbox(
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                    side="right",
+                )
+                draw_bbox(frame, left_bbox, color=(100, 100, 255))
+                draw_bbox(frame, right_bbox, color=(100, 255, 100))
+                face_bbox = get_face_bbox(
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                )
+                draw_bbox(frame, face_bbox, color=(255, 100, 100))
+
+            draw_label(
+                frame,
+                f"people count: {keypoints.shape[0]}",
+                (10, 30),
+                color=(255, 255, 0),
+            )
+
+            cv2.imshow("Part 1 - live whole body", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--hands_style", type=str, default="mediapipe", choices=["mediapipe", "coco133"])
     parser.add_argument("--score_threshold", type=float, default=0.5)
+    parser.add_argument("--use_input", type=str, default="reachy_mini", choices=["webcam", "reachy_mini"])
     args = parser.parse_args()
     main(args)
