@@ -28,7 +28,7 @@ make install-rules
 
 If group permissions were updated, log out and log back in once.
 
-## Build and run
+## Build the docker (if you have not pulled it)
 
 Build the image locally:
 
@@ -36,6 +36,7 @@ Build the image locally:
 make build
 ```
 
+## Run the docker
 Start the Reachy Mini daemon container:
 
 ```bash
