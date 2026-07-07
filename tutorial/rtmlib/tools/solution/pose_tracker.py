@@ -145,6 +145,7 @@ class PoseTracker:
                  to_openpose: bool = False,
                  backend: str = 'onnxruntime',
                  device: str = 'cpu',
+                 biggest_n_boxes_only: int = 0,
                  solution_kwargs: dict = {}):
 
         model = solution(mode=mode,
@@ -166,7 +167,9 @@ class PoseTracker:
             self.det_model = None
 
         self.pose_model = model.pose_model
-
+        
+        self.biggest_n_boxes_only = biggest_n_boxes_only
+        
         self.det_frequency = det_frequency
         self.tracking = tracking
         self.tracking_thr = tracking_thr
@@ -205,6 +208,12 @@ class PoseTracker:
                     return [], []
             else:
                 bboxes = self.bboxes_last_frame
+
+            if self.biggest_n_boxes_only > 0:
+                bboxes_sizes = [bbox[2] * bbox[3] for bbox in bboxes]
+                bboxes_sizes.sort(reverse=True)
+                bboxes_sizes = bboxes_sizes[:self.biggest_n_boxes_only]
+                bboxes = [bbox for bbox in bboxes if bbox[2] * bbox[3] in bboxes_sizes]
 
             if pose_model_name == 'RTMPose3d':
                 keypoints, scores, keypoints_simcc, keypoints2d = self.pose_model(

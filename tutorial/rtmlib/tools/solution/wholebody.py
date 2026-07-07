@@ -85,7 +85,8 @@ class Wholebody:
                  mode: str = 'balanced',
                  to_openpose: bool = False,
                  backend: str = 'onnxruntime',
-                 device: str = 'cpu'):
+                 device: str = 'cpu',
+                 biggest_n_boxes_only: int = 0):
 
         if det is None:
             det = self.MODE[mode]['det']
@@ -94,6 +95,9 @@ class Wholebody:
         if pose is None:
             pose = self.MODE[mode]['pose']
             pose_input_size = self.MODE[mode]['pose_input_size']
+            
+        self.biggest_n_boxes_only = biggest_n_boxes_only
+        print(f"Biggest {self.biggest_n_boxes_only} boxes only")
 
         self.det_model = YOLOX(det,
                                model_input_size=det_input_size,
@@ -108,6 +112,11 @@ class Wholebody:
 
     def __call__(self, image: np.ndarray):
         bboxes = self.det_model(image)
+        if self.biggest_n_boxes_only > 0:
+            bboxes_sizes = [bbox[2] * bbox[3] for bbox in bboxes]
+            bboxes_sizes.sort(reverse=True)
+            bboxes_sizes = bboxes_sizes[:self.biggest_n_boxes_only]
+            bboxes = [bbox for bbox in bboxes if bbox[2] * bbox[3] in bboxes_sizes]
         keypoints, scores = self.pose_model(image, bboxes=bboxes)
 
         return keypoints, scores

@@ -59,7 +59,7 @@ def build_pose_tracker():
     print(f"Loading the RTMLib whole-body tracker on {device}...")
 
     # You can replace those path by URLs like : "https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip"
-    # and the ehckpoints will be downloaded automatically
+    # and the checkpoints will be downloaded automatically
     det_onnx_model = "/app/downloads/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx"
     pose_onnx_model = "/app/downloads/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx"
     
@@ -68,6 +68,7 @@ def build_pose_tracker():
         "det_input_size": (640, 640),
         "pose": pose_onnx_model,
         "pose_input_size": (288, 384),
+        "biggest_n_boxes_only": 3,
     }
 
     tracker = PoseTracker(
@@ -76,6 +77,7 @@ def build_pose_tracker():
         backend="onnxruntime",
         device=device,
         to_openpose=False,
+        biggest_n_boxes_only=3,
         solution_kwargs=solution_kwargs,
     )
     return tracker

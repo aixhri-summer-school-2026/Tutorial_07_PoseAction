@@ -69,6 +69,7 @@ def build_pose_tracker():
         "det_input_size": (640, 640),
         "pose": pose_onnx_model,
         "pose_input_size": (288, 384),
+        "biggest_n_boxes_only": 2,
     }
 
     return PoseTracker(
@@ -77,6 +78,7 @@ def build_pose_tracker():
         backend="onnxruntime",
         device=device,
         to_openpose=False,
+        biggest_n_boxes_only=2,
         solution_kwargs=solution_kwargs,
     )
 
