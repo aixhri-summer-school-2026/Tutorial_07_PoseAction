@@ -15,6 +15,7 @@ All commands below are run from **inside the container**:
 ## Whole-body pose estimator (used by Parts 1-4)
 
 The live demos use the **RTMLib** whole-body pipeline (`tutorial/rtmlib/`).
+We use the plain source code (no install) with a slightly modified version of the library. You may customize it.
 It detects a person first, then predicts a pose with **133 keypoints** (body,
 face, and both hands).
 
@@ -31,6 +32,47 @@ Shared helpers live in:
 
 ## Part 1 - Whole-body detection + keypoints
 
+In this part you will run the RTMLib whole-body pipeline live and draw the
+detected skeleton on each frame.
+
+Before coding, you can see how the detection, pose estimation, tracking is wired:
+- `tutorial/rtmlib/tools/solution/pose_tracker.py` — `PoseTracker` (person detection + pose on each box)
+- `tutorial/rtmlib/tools/solution/wholebody.py` — `Wholebody` solution (133 keypoints: body, face, hands)
+- `tutorial/rtmlib/visualization/skeleton/coco133.py` — `coco133` to see the full skeleton structure (we dont use it directly)
+
+The model outputs **133 keypoints per person**. Shared index constants live in
+`keypoints_utils.py` (`BODY_IDS`, `FACE_IDS`, `LEFT_HAND_IDS`, `RIGHT_HAND_IDS`, …).
+
+### Step 1 — Verify the detector
+
+Run the script as-is (visualization is commented out). You should see shape
+prints in the terminal, e.g. `(N, 133, 2)` for keypoints.
+
+### Step 2 — Complete `keypoints_utils.py`
+
+1. **`draw_hand_edges()`** — for each edge in `edges`, draw a line between the
+   two keypoints when both are visible; then draw a small circle on each visible
+   joint (`cv2.line`, `cv2.circle`).
+2. **`draw_skeleton()`** — pick `HAND21_EDGES_MEDIAPIPE` or `HAND21_EDGES_COCO133`
+   from `hands_style`, then call `draw_hand_edges` for the left and right hand
+   slices (`kpts[LEFT_HAND_IDS]`, `kpts[RIGHT_HAND_IDS]`).
+
+### Step 3 — Complete `visualize_wholebody_live.py`
+
+Uncomment the block marked `PART 1 EXERCISE` and fill in the missing arguments
+to `draw_skeleton`, `get_hand_bbox`, `get_face_bbox`, and `draw_label`.
+
+The necessary wrist-gating logic is already there: if a wrist score is below the threshold,
+all keypoints of that hand are zeroed out (the model sometimes swaps left/right).
+
+### Expected result
+
+![Expected visualization](illustrations/expected_visu_2_16_19_360p.gif)
+
+Body joints, colored hand skeletons (blue = left, green = right), and bounding
+boxes around hands and face. A label shows the people count.
+
+
 ```bash
 # Run the whole-body detector live on the robot camera
 python tutorial/visualize_wholebody_live.py
@@ -42,26 +84,78 @@ python tutorial/visualize_wholebody_live.py --use_input webcam
 python tutorial/visualize_wholebody_live.py --hands_style mediapipe
 ```
 
+
+
 ## Part 2 - Gesture classification
 
 The classifier is trained on **MediaPipe-style 21-point hands** from HaGRID.
 At runtime, hand keypoints are sliced from the whole-body prediction.
+Pre-extracted splits live in `tutorial/data/hagrid_keypoints/` (8 gesture classes).
+See the optional section below to rebuild them from the original HaGRID annotations.
+
+All exercises are in:
+- `handkeypoints_dataset.py` — `normalize_keypoints`, `flip_keypoints`, `HandKeypointDataset`
+- `handkeypoints_models.py` — `HandMLP` and/or `HandGCN`
+
+Search for `PART 2 EXERCISE` in those files. Stuck? See `tutorial_complete/`.
+
+### Step 1 — Explore the raw data
 
 ```bash
-# Visualize the training dataset
 python tutorial/visualize_hagrid_data.py
+```
 
-# Train the classifier on hand keypoints (try mlp or gcn)
+This script will only work fully once Steps 2–3 are done. Until then, read the
+raw `.npz` layout: `X` is `(N, 21, 2)` keypoints in image-normalized `[0, 1]`
+coordinates, `y` is the gesture index.
+
+### Step 2 — `normalize_keypoints()` in `handkeypoints_dataset.py`
+
+Center the hand on the wrist (keypoint 0), then divide by the largest
+wrist-to-joint distance so the shape is scale-invariant. Values end up roughly
+in `[-1, 1]`.
+
+### Step 3 — `flip_keypoints()` and `HandKeypointDataset.__getitem__`
+
+- **`flip_keypoints()`** — mirror the hand horizontally (negate x; wrist stays at origin).
+- **`__getitem__()`** — always call `normalize_keypoints`; when `augment=True`,
+  flip randomly with probability 0.5.
+
+Re-run the visualizer: left = raw sample, right = processed / augmented sample.
+
+![Dataset visualizer](illustrations/expected_hagrid_360p.gif)
+
+### Step 4 — Models in `handkeypoints_models.py`
+
+Pick one or both:
+
+- **`HandMLP`** — flatten `(21, 2)` → 42 numbers, then a small MLP
+  (recommended: 128 → 64 hidden units, ReLU, dropout 0.2).
+- **`HandGCN`** — build the normalized adjacency `A_hat` from `HAND21_EDGES_MEDIAPIPE`
+  (see `illustrations/gcn_ref.png`), then two graph-conv layers + mean pooling.
+
+```bash
+# Train the classifier (try mlp or gcn)
 python tutorial/handkeypoints_train.py --model mlp
+python tutorial/handkeypoints_train.py --model gcn
+```
 
-# Live: whole-body pose -> hand keypoints -> classifier -> label on screen with the robot camera
+Expected test accuracy: ~0.85 with GCN, >0.95 with MLP.
+The best checkpoint is saved to `tutorial/weights/gesture_classifier.pt`.
+
+### Step 5 — Live classification demo
+
+```bash
 python tutorial/visualize_pose_classification_live.py
-
-# Alternatively with the USB camera / webcam
 python tutorial/visualize_pose_classification_live.py --use_input webcam
 ```
 
+![Live classification](illustrations/expected_visu_classif.png)
+
 ## Part 3 - Run SixDRepNet demo
+
+Just run the demo and take a look at `tutorial/SixDRepNet/main.py` to see the processing step. 
+We will replace the face detection model by the keypoints based face detection implemented in Part 1. 
 
 Standalone head-pose demo (not used directly by the live whole-body pipeline):
 
@@ -70,6 +164,8 @@ python tutorial/SixDRepNet/main.py --demo
 ```
 
 ## Part 4 - Gesture-driven robot behaviours
+
+This part requires a Reachy. If everything went well this serves as a starting point for a demo with a moving robot !
 
 Uses the whole-body estimator for hands and face. Choose a head-control mode
 at launch:
@@ -88,12 +184,19 @@ Gesture → behaviour:
 - `peace` → start head control / `stop` → stop head control
 - `hand_heart` (both hands) → wave the head
 
-## OPTIONAL (for staff) : Download and prepare the data
+
+# Part 5 - Customize and improve !
+
+Now you can customize and improve the demo, some suggestions :
+- Heart sign with both hands : improve it so that is triggers only when the hands are touching
+- ...
+
+
+## (Optional) Instructions to download and prepare the HaGRID data
 
 Download the dataset (out of the docker)
 ```bash
 wget https://rndml-team-cv.obs.ru-moscow-1.hc.sbercloud.ru/datasets/hagrid_v2/annotations_with_landmarks/annotations.zip
-# TODO : note down the alternative scp command from local network
 unzip annotations.zip
 mv annotations HaGRIDv2_annotations
 ```
@@ -144,3 +247,6 @@ Note: `/app/downloads/` is not bind-mounted, so if you recreate the container yo
 ls -la /dev/video*
 sudo chmod 666 /dev/video2   # replace with your desired cam device
 ```
+
+## References
+TODO : add references, 6DRep, Hagrid, rtmpose, yolo

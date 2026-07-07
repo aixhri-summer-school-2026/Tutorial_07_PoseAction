@@ -23,7 +23,7 @@ import os
 
 import numpy as np
 
-from keypoints_utils import GESTURES, NUM_KEYPOINTS
+from keypoints_utils import GESTURES, NUM_KEYPOINTS_HAND
 
 ANNOTATIONS_ROOT = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -61,7 +61,7 @@ def collect_hands_for_gesture(gesture, split, max_needed):
             if labels[hand_index] != gesture:
                 continue
             landmarks = landmarks_per_hand[hand_index]
-            if len(landmarks) != NUM_KEYPOINTS:
+            if len(landmarks) != NUM_KEYPOINTS_HAND:
                 continue
 
             hands.append(np.array(landmarks, dtype=np.float32))

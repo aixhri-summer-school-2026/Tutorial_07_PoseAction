@@ -334,7 +334,7 @@ def main():
                 frame = frame.copy()
 
                 keypoints, scores = pose_tracker(frame)
-                track_ids = pose_tracker.track_ids_last_frame
+                track_ids = pose_tracker.track_ids_last_frame # the tracking is very basic (greedy IoU) and can be disfunctional, see rtmlib/tools/solution/pose_tracker.py to improve it ! 
                 for det in range(scores.shape[0]):
                     if scores[det, LEFT_WRIST_ID] < SCORE_THRESHOLD:
                         scores[det, LEFT_HAND_IDS] = 0.0

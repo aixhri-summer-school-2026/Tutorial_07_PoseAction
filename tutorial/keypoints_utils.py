@@ -38,16 +38,20 @@ GESTURES = [
 ]
 
 
-NUM_KEYPOINTS = 21
+# Keypoints references
+NUM_KEYPOINTS_HAND = 21 # Number of keypoints in the hand skeleton
 
-LEFT_WRIST_ID = 9
-RIGHT_WRIST_ID = 10
-LEFT_HAND_IDS = np.arange(91, 112)
-RIGHT_HAND_IDS = np.arange(112, 133)
-FACE_IDS = np.arange(23, 91)
-BODY_IDS = np.arange(17)
+LEFT_WRIST_ID = 9   # left wrist in the COCO body skeleton (keypoint index 9)
+RIGHT_WRIST_ID = 10 # right wrist in the COCO body skeleton (keypoint index 10)
+LEFT_HAND_IDS = np.arange(91, 112)   # 21 left-hand keypoints in the 133-keypoint layout
+RIGHT_HAND_IDS = np.arange(112, 133) # 21 right-hand keypoints
+FACE_IDS = np.arange(23, 91)         # face landmarks
+BODY_IDS = np.arange(17)             # COCO body keypoints
 
+# Kinematic structure of the hand skeleton with COCO-Wholebody format
 HAND21_EDGES_COCO133 = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16), (0, 17), (17, 18), (18, 19), (19, 20)]
+
+# Kinematic structure of the hand skeleton with MediaPipe format
 HAND21_EDGES_MEDIAPIPE = [
     (0, 1), (1, 2), (2, 3), (3, 4),         # thumb
     (0, 5), (5, 6), (6, 7), (7, 8),         # index
@@ -63,21 +67,24 @@ HAND21_EDGES_MEDIAPIPE = [
 # ---------------------------------------------------------------------------
 def draw_hand_edges(frame, keypoints_px, edges, scores=None, kpt_thr=0.5,
                      color=(0, 255, 0), point_color=(0, 0, 255)):
+    
     """Draw one 21-keypoint hand using a provided edge list."""
-    kpts = np.asarray(keypoints_px, dtype=np.float32).reshape(NUM_KEYPOINTS, 2)
+    
+    kpts = np.asarray(keypoints_px, dtype=np.float32).reshape(NUM_KEYPOINTS_HAND, 2)
+   
     if scores is None:
-        visible = np.ones(NUM_KEYPOINTS, dtype=bool)
+        visible = np.ones(NUM_KEYPOINTS_HAND, dtype=bool)
     else:
-        visible = np.asarray(scores, dtype=np.float32).reshape(NUM_KEYPOINTS) >= kpt_thr
+        visible = np.asarray(scores, dtype=np.float32).reshape(NUM_KEYPOINTS_HAND) >= kpt_thr
 
-    for i, j in edges:
-        if visible[i] and visible[j]:
-            p1 = (int(kpts[i, 0]), int(kpts[i, 1]))
-            p2 = (int(kpts[j, 0]), int(kpts[j, 1]))
-            cv2.line(frame, p1, p2, color, 2)
-    for idx, (x, y) in enumerate(kpts):
-        if visible[idx]:
-            cv2.circle(frame, (int(x), int(y)), 3, point_color, -1)
+    # YOUR CODE HERE — draw edges between visible keypoint pairs (cv2.line)
+    # for i, j in edges:
+    #     ...
+
+    # YOUR CODE HERE — draw a dot on each visible joint (cv2.circle)
+    # for idx, (x, y) in enumerate(kpts):
+    #     ...
+
 
 
 def draw_visible_points(frame, person_kpts, visible, indices, point_color):
@@ -95,6 +102,7 @@ def draw_skeleton(frame,
                   include_face=True,
                   color=(0, 255, 0),
                   point_color=(0, 0, 255)):
+    
     """Draw a simplified COCO133 whole-body skeleton for one person.
 
     The body always uses the first 17 keypoints. Hands and face can be toggled
@@ -113,18 +121,23 @@ def draw_skeleton(frame,
 
     visible = conf >= kpt_thr
 
+    # draw the body keypoints
     draw_visible_points(frame, kpts, visible, BODY_IDS, point_color)
 
     if include_hands:
-        edges = HAND21_EDGES_MEDIAPIPE if hands_style == "mediapipe" else HAND21_EDGES_COCO133
-        draw_hand_edges(frame, kpts[LEFT_HAND_IDS], edges=edges,
-                        color=(100, 100, 255), point_color=point_color,
-                        scores=conf[LEFT_HAND_IDS], kpt_thr=kpt_thr)
-        draw_hand_edges(frame, kpts[RIGHT_HAND_IDS], edges=edges,
-                        color=(100, 255, 100), point_color=point_color,
-                        scores=conf[RIGHT_HAND_IDS], kpt_thr=kpt_thr)
+        # draw the left and right hand edges
+        
+        # choose edges depending on the hands_style
+        # edges = ...
+        draw_hand_edges(
+            # place your args
+        )
+        draw_hand_edges(
+            # place your args
+        )
 
     if include_face:
+        # draw the face keypoints
         draw_visible_points(frame, kpts, visible, FACE_IDS, point_color)
 
 

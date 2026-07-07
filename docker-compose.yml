@@ -18,6 +18,7 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ./tests:/app/tests
       - ./tutorial:/app/tutorial
+      - ./tutorial_complete:/app/tutorial_complete
       - ./HaGRIDv2_annotations:/app/HaGRIDv2_annotations
       - /run/udev:/run/udev
       - /run/user/${UID:-1000}/pulse:/run/user/${UID:-1000}/pulse
