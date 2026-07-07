@@ -183,6 +183,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Live gesture classification.")
     parser.add_argument("--classifier", default=DEFAULT_CLASSIFIER)
     parser.add_argument("--class_conf", type=float, default=0.8, help="Class confidence threshold (for gesture classification)")
+    parser.add_argument("--use_input", type=str, default="reachy_mini", choices=["webcam", "reachy_mini"])
     parser.add_argument("--score_threshold", type=float, default=0.5, help="Score threshold (for hand keypoints detection)")
     parser.add_argument("--hands_style", type=str, default="mediapipe",
                         choices=["mediapipe", "coco133"])

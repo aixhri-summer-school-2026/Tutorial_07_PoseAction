@@ -49,7 +49,7 @@ At runtime, hand keypoints are sliced from the whole-body prediction.
 
 ```bash
 # Visualize the training dataset
-python tutorial/visualize_hagrid_data.py --num -1
+python tutorial/visualize_hagrid_data.py
 
 # Train the classifier on hand keypoints (try mlp or gcn)
 python tutorial/handkeypoints_train.py --model mlp

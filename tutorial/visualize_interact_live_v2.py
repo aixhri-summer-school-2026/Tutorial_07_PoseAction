@@ -346,14 +346,14 @@ def main():
                 print(hands)
                 
                 # we only take left hand of the biggest person
-                biggest_person_id = max(hands, key=lambda h: h["person_size"])["track_id"] if hands else None
-                command_hand = [h for h in hands if (h["track_id"] == biggest_person_id and h["handedness"] == "left")] if biggest_person_id else None
+                biggest_person_size = max(hands, key=lambda h: h["person_size"])["person_size"] if hands else None
+                command_hand = [h for h in hands if (h["person_size"] == biggest_person_size and h["handedness"] == "left")] if biggest_person_size else None
                 if command_hand and len(command_hand) > 0:
                     command_hand = command_hand[0]
                     draw_bbox(frame, command_hand["hand_bbox"], color=(0, 255, 0))
                 
                 # are there both hands of the biggest person doing the heart gesture?
-                both_hearts = len([h for h in hands if (h["track_id"] == biggest_person_id and h["gesture"] == "hand_heart")]) >= 2
+                both_hearts = len([h for h in hands if (h["person_size"] == biggest_person_size and h["gesture"] == "hand_heart")]) >= 2
 
                 raw_gesture = command_hand["gesture"] if command_hand else "no_gesture"
                 gesture = smoother.update(raw_gesture)
