@@ -97,7 +97,6 @@ All exercises are in:
 - `handkeypoints_dataset.py` — `normalize_keypoints`, `flip_keypoints`, `HandKeypointDataset`
 - `handkeypoints_models.py` — `HandMLP` and/or `HandGCN`
 
-Search for `PART 2 EXERCISE` in those files. Stuck? See `tutorial_complete/`.
 
 ### Step 1 — Explore the raw data
 
