@@ -195,14 +195,14 @@ Now you can customize and improve the demo, some suggestions :
   - improve it so that is triggers only when the hands are touching [visualize_interact_live_v2](visualize_interact_live_v2.py#358)
   - change the behavior such that it triggers only when two different persons are doing it together [visualize_interact_live_v2](visualize_interact_live_v2.py#356)
 
-![HandHeartSignIssue](illustrations/hand_heart_sign_issue.png)
+![HandHeartSignIssue](illustrations/heartbroken.jpg)
 
 - Improve gesture recognition quality (Step 2.) :
   - Update network architectures (`handkeypoints_models.py`)
   - Update training parameters and retrain (`handkeypoints_train.py`)
   - Add new data augmentation strategies, 
 
-![MisclassificationIssue](illustrations/misclassification.png)
+![MisclassificationIssue](illustrations/erroneous.jpg)
 
 - Change the detected gesture list and/or increase dataset size (Step 2.) :
   - See section `(Optional) Instructions to download and prepare the HaGRID data` and download raw data (~500MB). Reference at [https://github.com/hukenovs/hagrid](https://github.com/hukenovs/hagrid).
