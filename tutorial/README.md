@@ -210,9 +210,9 @@ Now you can customize and improve the demo, some suggestions :
 
 ![HagridListOfSigns](illustrations/hagridlist.png)
 
-- Update robots behavior and the orchestration logic. 
 > [!NOTE]
 > Note that the robot is controled through `target_yaw`, `target_pitch` and antennas positions with Reachy's `set_target` interface, if necessary make sure to handle the interpolation in the code yourself.
+- Update robots behavior and the orchestration logic. 
   - The "heart detected" behavior is a simple wave on the `target_yaw` you can improve it in [visualize_interact_live_v2](visualize_interact_live_v2.py#384)
   - Change the tracking target to use a hand instead of a face in [visualize_interact_live_v2](visualize_interact_live_v2.py#395)
 
