@@ -68,3 +68,39 @@ make down
 Test scripts are in `tests/` and can be run from inside the container.
 
 See `tests/README.md` for full test instructions.
+
+## Troubleshooting
+
+- If you pulled or built the docker **before 08/07/2026**, the whole-body ONNX models are not baked into the image. Either rebuild (`make build`) or do the following (faster):
+
+```bash
+# 1. On the host (outside the docker): download and extract the models into tutorial/
+mkdir -p tutorial
+cd tutorial
+wget https://download.openmmlab.com/mmpose/v1/projects/rtmposev1/onnx_sdk/yolox_m_8xb8-300e_humanart-c2c7a14a.zip
+wget https://download.openmmlab.com/mmpose/v1/projects/rtmw/onnx_sdk/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.zip
+unzip yolox_m_8xb8-300e_humanart-c2c7a14a.zip -d yolox_det
+unzip rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.zip -d rtmw_pose
+mv "$(find yolox_det -name end2end.onnx)" yolox_m_8xb8-300e_humanart-c2c7a14a.onnx
+mv "$(find rtmw_pose -name end2end.onnx)" rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx
+rm -rf *.zip yolox_det rtmw_pose
+cd ..
+
+# 2. Inside the docker: move them to /app/downloads/ (where the live scripts look)
+make shell
+mkdir -p /app/downloads
+mv /app/tutorial/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx /app/downloads/
+mv /app/tutorial/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx /app/downloads/
+
+# 3. Install onnxruntime-gpu and fix LD_LIBRARY_PATH
+source tutorial/update.sh
+```
+
+Note: `/app/downloads/` is not bind-mounted, so if you recreate the container you must repeat step 2 (the `.onnx` files stay on the host in `tutorial/`).
+
+
+- If you have issues with "permission denied" for video devices (integrated or usb webcam). Outside of the docker, do the following :
+```
+ls -la /dev/video*
+sudo chmod 666 /dev/video2   # replace with your desired cam device
+```
