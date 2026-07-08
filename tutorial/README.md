@@ -214,7 +214,7 @@ Now you can customize and improve the demo, some suggestions :
   - Change the tracking target to use a hand instead of a face in [visualize_interact_live_v2](visualize_interact_live_v2.py#395)
 
 - Implement a more advanced tracker in `rtmlib` and display track ids (*harder*s)
-  -  The tracking logic is by default a simple greedy IoU tracker `rtmlib/tools/solution/pose_tracker.py` [PoseTracker](rtmlib/tools/solution/pose_tracker.py.py#275)
+  -  The tracking logic is by default a simple greedy IoU tracker `rtmlib/tools/solution/pose_tracker.py` [PoseTracker](rtmlib/tools/solution/pose_tracker.py#275)
 
 
 ## (Optional) Instructions to download and prepare the HaGRID data
