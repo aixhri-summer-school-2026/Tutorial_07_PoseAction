@@ -2,8 +2,10 @@
 
 Using whole-body pose estimation and gesture recognition to interact with an expressive Reachy Mini robot (AIxHRI Summer School 2026).
 
-You will find here all the install instructions. If you already have the docker use `make run` then `make shell`.
-The instructions regarding the tutorial are in [tutorial](https://github.com/aixhri-summer-school-2026/Tutorial_07_PoseAction/blob/main/tutorial/README.md).
+You will find here all the install instructions. If you already have the docker use `make install-rules`, `make run` then `make shell`.
+
+> [!TIP]
+> Go to the [tutorial instructions](tutorial/README.md).
 
 ## Prerequisites
 

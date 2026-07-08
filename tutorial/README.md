@@ -48,6 +48,11 @@ The model outputs **133 keypoints per person**. Shared index constants live in
 Run the script as-is (visualization is commented out). You should see shape
 prints in the terminal, e.g. `(N, 133, 2)` for keypoints.
 
+```bash
+# Run the whole-body detector live on the robot camera
+python tutorial/visualize_wholebody_live.py
+```
+
 ### Step 2 — Complete `keypoints_utils.py`
 
 1. **`draw_hand_edges()`** — for each edge in `edges`, draw a line between the
@@ -69,7 +74,7 @@ all keypoints of that hand are zeroed out (the model sometimes swaps left/right)
 
 ![Expected visualization](illustrations/expected_visu_2_16_19_360p.gif)
 
-Body joints, colored hand skeletons (blue = left, green = right), and bounding
+Body joints, colored hand skeletons, and bounding
 boxes around hands and face. A label shows the people count.
 
 
@@ -104,9 +109,7 @@ All exercises are in:
 python tutorial/visualize_hagrid_data.py
 ```
 
-This script will only work fully once Steps 2–3 are done. Until then, read the
-raw `.npz` layout: `X` is `(N, 21, 2)` keypoints in image-normalized `[0, 1]`
-coordinates, `y` is the gesture index.
+This script will only work once Steps 2–3 are done.
 
 ### Step 2 — `normalize_keypoints()` in `handkeypoints_dataset.py`
 
