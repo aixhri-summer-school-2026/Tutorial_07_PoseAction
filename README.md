@@ -92,7 +92,7 @@ mkdir -p /app/downloads
 mv /app/tutorial/yolox_m_8xb8-300e_humanart-c2c7a14a.onnx /app/downloads/
 mv /app/tutorial/rtmw-x_simcc-cocktail13_pt-ucoco_270e-384x288-0949e3a9_20230925.onnx /app/downloads/
 
-# 3. Install onnxruntime-gpu and fix LD_LIBRARY_PATH
+# 3. Install onnxruntime-gpu and fix LD_LIBRARY_PATH (everytime you do a new make down / make run)
 source tutorial/update.sh
 ```
 
