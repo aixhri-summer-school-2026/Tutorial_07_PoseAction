@@ -33,6 +33,7 @@ import torch
 import scipy
 from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
+from reachy_mini.media.gstreamer_utils import audio_duration_seconds
 from rtmlib import PoseTracker, Wholebody
 from torchvision import transforms
 
@@ -179,7 +180,31 @@ class GestureSmoother:
     def update(self, gesture):
         self.history.append(gesture)
         return Counter(self.history).most_common(1)[0][0]
+    
+    
 
+class FilePlayer:
+    """Plays a sound file exactly once, on-demand, in a separate thread."""
+
+    def __init__(self, mini, file_path: str):
+        self.mini = mini
+        self.file_path = os.path.abspath(file_path)
+        self._thread = None
+
+    def play(self):
+        """Triggers file playback in a background thread if not already playing."""
+        if self._thread is None or not self._thread.is_alive():
+            self._thread = threading.Thread(target=self._play_once, daemon=True)
+            self._thread.start()
+
+    def _play_once(self):
+        print(f"FilePlayer: Playing {self.file_path}...")
+        self.mini.media.play_sound(self.file_path)
+        time.sleep(audio_duration_seconds(self.file_path))
+        print("FilePlayer: Playback finished.")
+
+       
+        
 
 class SoundPlayer:
     """Plays random musical notes in a background thread while active."""
@@ -322,6 +347,9 @@ def main():
     with ReachyMini() as mini:
         sound_player = SoundPlayer(mini)
         sound_player.start()
+        
+        file_player = FilePlayer(mini, os.path.join(HERE, "sounds", "cartoon-fluttering.wav"))
+        
         mini.goto_target(create_head_pose(pitch=-10.0),
                          antennas=np.deg2rad(ANTENNAS_CLOSED), duration=1.0)
         mini.set_automatic_body_yaw(True)
@@ -334,7 +362,7 @@ def main():
                 frame = frame.copy()
 
                 keypoints, scores = pose_tracker(frame)
-                track_ids = pose_tracker.track_ids_last_frame # the tracking is very basic (greedy IoU) and can be disfunctional, see rtmlib/tools/solution/pose_tracker.py to improve it ! 
+                track_ids = pose_tracker.track_ids_last_frame
                 for det in range(scores.shape[0]):
                     if scores[det, LEFT_WRIST_ID] < SCORE_THRESHOLD:
                         scores[det, LEFT_HAND_IDS] = 0.0
@@ -360,6 +388,7 @@ def main():
 
                 if gesture == "point":
                     sound_on = True
+                    # file_player.play() # single play of cartoon-fluttering.wav
                 elif gesture == "mute":
                     sound_on = False
                 elif gesture == "rock":

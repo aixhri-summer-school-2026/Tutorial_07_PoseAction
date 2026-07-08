@@ -104,3 +104,9 @@ Note: `/app/downloads/` is not bind-mounted, so if you recreate the container yo
 ls -la /dev/video*
 sudo chmod 666 /dev/video2   # replace with your desired cam device
 ```
+
+- The volume is too low or too high (70 to 80 recommended)
+```
+amixer -c 0 sset 'PCM' 75%
+amixer -c 0 sset 'PCM',1 75%
+```
