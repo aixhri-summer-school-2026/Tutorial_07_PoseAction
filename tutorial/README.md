@@ -48,6 +48,11 @@ The model outputs **133 keypoints per person**. Shared index constants live in
 Run the script as-is (visualization is commented out). You should see shape
 prints in the terminal, e.g. `(N, 133, 2)` for keypoints.
 
+```bash
+# Run the whole-body detector live on the robot camera
+python tutorial/visualize_wholebody_live.py
+```
+
 ### Step 2 — Complete `keypoints_utils.py`
 
 1. **`draw_hand_edges()`** — for each edge in `edges`, draw a line between the
@@ -69,7 +74,7 @@ all keypoints of that hand are zeroed out (the model sometimes swaps left/right)
 
 ![Expected visualization](illustrations/expected_visu_2_16_19_360p.gif)
 
-Body joints, colored hand skeletons (blue = left, green = right), and bounding
+Body joints, colored hand skeletons, and bounding
 boxes around hands and face. A label shows the people count.
 
 
@@ -104,9 +109,7 @@ All exercises are in:
 python tutorial/visualize_hagrid_data.py
 ```
 
-This script will only work fully once Steps 2–3 are done. Until then, read the
-raw `.npz` layout: `X` is `(N, 21, 2)` keypoints in image-normalized `[0, 1]`
-coordinates, `y` is the gesture index.
+This script will only work once Steps 2–3 are done.
 
 ### Step 2 — `normalize_keypoints()` in `handkeypoints_dataset.py`
 
@@ -187,8 +190,34 @@ Gesture → behaviour:
 # Part 5 - Customize and improve !
 
 Now you can customize and improve the demo, some suggestions :
-- Heart sign with both hands : improve it so that is triggers only when the hands are touching
-- ...
+
+- Heart sign with both hands : 
+  - improve it so that is triggers only when the hands are touching [visualize_interact_live_v2](visualize_interact_live_v2.py#358)
+  - change the behavior such that it triggers only when two different persons are doing it together [visualize_interact_live_v2](visualize_interact_live_v2.py#356)
+
+![HandHeartSignIssue](illustrations/heartbroken.jpg)
+
+- Improve gesture recognition quality (Step 2.) :
+  - Update network architectures (`handkeypoints_models.py`)
+  - Update training parameters and retrain (`handkeypoints_train.py`)
+  - Add new data augmentation strategies, 
+
+![MisclassificationIssue](illustrations/erroneous.jpg)
+
+- Change the detected gesture list and/or increase dataset size (Step 2.) :
+  - See section `(Optional) Instructions to download and prepare the HaGRID data` and download raw data (~500MB). Reference at [https://github.com/hukenovs/hagrid](https://github.com/hukenovs/hagrid).
+  - Update data preparation script and the list of gestures (`prepare_hagrid_dataset.py`, `keypoints_utils.py`)
+
+![HagridListOfSigns](illustrations/hagridlist.png)
+
+> [!NOTE]
+> Note that the robot is controled through `target_yaw`, `target_pitch` and antennas positions with Reachy's `set_target` interface, if necessary make sure to handle the interpolation in the code yourself.
+- Update robots behavior and the orchestration logic. 
+  - The "heart detected" behavior is a simple wave on the `target_yaw` you can improve it in [visualize_interact_live_v2](visualize_interact_live_v2.py#384)
+  - Change the tracking target to use a hand instead of a face in [visualize_interact_live_v2](visualize_interact_live_v2.py#395)
+
+- Implement a more advanced tracker in `rtmlib` and display track ids (*harder*s)
+  -  The tracking logic is by default a simple greedy IoU tracker `rtmlib/tools/solution/pose_tracker.py` [PoseTracker](rtmlib/tools/solution/pose_tracker.py#275)
 
 
 ## (Optional) Instructions to download and prepare the HaGRID data
@@ -241,7 +270,8 @@ source tutorial/update.sh
 Note: `/app/downloads/` is not bind-mounted, so if you recreate the container you must repeat step 2 (the `.onnx` files stay on the host in `tutorial/`).
 
 
-- If you have issues with "permission denied" for video devices (integrated or usb webcam). Outside of the docker, do the following :
+- If you have issues with "permission denied" for video devices (integrated or usb webcam). Outside of the docker, first make sure you did the `make install-rules` mentionned in repository README. 
+Then do the following :
 ```
 ls -la /dev/video*
 sudo chmod 666 /dev/video2   # replace with your desired cam device
