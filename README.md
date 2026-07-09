@@ -110,3 +110,9 @@ sudo chmod 666 /dev/video2   # replace with your desired cam device
 amixer -c 0 sset 'PCM' 75%
 amixer -c 0 sset 'PCM',1 75%
 ```
+
+- If you have display issues like : `qt.qpa.xcb: could not connect to display :1`
+```
+# On the host (outside of the docker)
+xhost +local:docker
+```
