@@ -5,29 +5,24 @@ from keypoints_utils import HAND21_EDGES_MEDIAPIPE
 
 NUM_KEYPOINTS_HAND = 21
 
-###############
-# MLP model
-###############
 class HandMLP(nn.Module):
     """A plain multi-layer perceptron on the flattened 42 numbers (21 x 2)."""
 
     def __init__(self, num_classes):
         super().__init__()
         self.net = nn.Sequential(
-            # nn.Linear(NUM_KEYPOINTS_HAND * 2, ...0),
-            # ...
-            # Implement the MLP architecture here with Linear layers (intermediate sizes 128 then 64 recommended) and activations (ReLU recommended)
+            nn.Linear(NUM_KEYPOINTS_HAND * 2, 128),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, num_classes),
         )
 
     def forward(self, x):
         # x comes in as (batch, 21, 2); flatten it to (batch, 42).
-        # x = ...
+        x = x.reshape(x.shape[0], -1)
         return self.net(x)
-
-
-###############
-# GCN model
-###############
 
 def build_hand_adjacency():
     """
@@ -35,32 +30,33 @@ def build_hand_adjacency():
         A_hat = D^{-1/2} (A + I) D^{-1/2}
 
     following Kipf & Welling GCN normalization.
-
-    See the rule in illustrations/gcn_ref.png
-    https://arxiv.org/abs/1609.02907
     """
 
     # adjacency matrix
-    # A = ...
+    A = np.zeros(
+        (NUM_KEYPOINTS_HAND, NUM_KEYPOINTS_HAND),
+        dtype=np.float32
+    )
 
-    # for ... in ...:
-        # ...
+    for i, j in HAND21_EDGES_MEDIAPIPE:
+        A[i, j] = 1.0
+        A[j, i] = 1.0
 
-    # add self-connections: A_hat = A + I
-    # A = A + ...
+    # add self-loops: A_hat = A + I
+    A = A + np.eye(NUM_KEYPOINTS_HAND, dtype=np.float32)
 
     # degree matrix: D_ii = sum_j A_ij
-    # degree = ...
-    
-    # D = np.diag(degree)
+    degree = A.sum(axis=1)
+    D = np.diag(degree)
 
     # D^{-1/2}
-    # D_inv_sqrt = ...
+    D_inv_sqrt = np.diag(1.0 / np.sqrt(np.diag(D)))
 
     # normalized adjacency
-    # A_hat = ...
+    A_hat = D_inv_sqrt @ A @ D_inv_sqrt
 
-    # return A_hat
+    return A_hat
+
 
 class HandGCN(nn.Module):
     """A tiny graph convolutional network on the 21-keypoint hand graph.
@@ -81,10 +77,7 @@ class HandGCN(nn.Module):
 
     def graph_conv(self, features, linear):
         projected = linear(features)
-        mixed = torch.matmul(
-            #  fill the missing arguments
-            # ...
-        )
+        mixed = torch.matmul(self.adjacency, projected)
         return torch.relu(mixed)
 
     def forward(self, x):

@@ -26,23 +26,20 @@ def normalize_keypoints(keypoints):
     kpts = np.asarray(keypoints, dtype=np.float32).reshape(NUM_KEYPOINTS_HAND, 2)
 
     wrist = kpts[0]
-    
-    # centered = ...
+    centered = kpts - wrist
 
-    # scale = 
+    distances = np.sqrt((centered ** 2).sum(axis=1))
+    scale = distances.max()
     if scale < 1e-6:
         scale = 1.0  # avoid dividing by zero on a degenerate hand
-    
-    # out = ...
 
-    # return an array of the same shape as kpts, but normalized following the instructions above
-    # return ...
+    return centered / scale
 
 
 def flip_keypoints(keypoints):
-    """Mirror a normalized hand left/right (simple data augmentation). Flip around the x-axis."""
-    flipped = keypoints.copy()
-    # Implement the flipping around the x-axis
+    """Mirror a normalized hand left/right (simple data augmentation)."""
+    flipped = np.array(keypoints, dtype=np.float32)
+    flipped[:, 0] = -flipped[:, 0]
     return flipped
 
 
@@ -61,13 +58,13 @@ class HandKeypointDataset(Dataset):
     def __getitem__(self, index):
         keypoints = self.X[index]
 
-        keypoints = normalize_keypoints(keypoints)
-        # Data augmentation: apply the augmentation logic here
-        if self.augment:
+        # Data augmentation: randomly mirror the hand left/right.
+        if self.augment and np.random.rand() < 0.5:
+            keypoints = normalize_keypoints(keypoints)
             keypoints = flip_keypoints(keypoints)
-            # ... add other augmentations if you want
+        else:
+            keypoints = normalize_keypoints(keypoints)
 
         x = torch.tensor(keypoints, dtype=torch.float32)  # (21, 2)
         label = torch.tensor(self.y[index], dtype=torch.long)
-        
         return x, label

@@ -150,7 +150,7 @@ def main(args):
                     scores[det, LEFT_HAND_IDS] = 0.0
                 if scores[det, RIGHT_WRIST_ID] < args.score_threshold:
                     scores[det, RIGHT_HAND_IDS] = 0.0
-
+                    
             for person_kpts, person_scores in zip(keypoints, scores):
                 draw_skeleton(
                     frame,

@@ -388,7 +388,7 @@ def main():
 
                 if gesture == "point":
                     sound_on = True
-                    # file_player.play() # single play of cartoon-fluttering.wav
+                    file_player.play() # single play
                 elif gesture == "mute":
                     sound_on = False
                 elif gesture == "rock":
@@ -400,7 +400,7 @@ def main():
                 elif gesture == "stop":
                     pose_active = False
 
-                sound_player.set_active(sound_on)
+                # sound_player.set_active(sound_on)
                 antennas = ANTENNAS_OPEN if antennas_open else ANTENNAS_CLOSED
 
                 smooth_antenna_left = 0.8 * smooth_antenna_left + 0.2 * antennas[0]

@@ -113,13 +113,6 @@ def main(args):
 
             frame = frame.copy()
             keypoints, scores = pose_tracker(frame)
-            
-            print(f"Got keypoints and scores of shape {keypoints.shape} and {scores.shape} !")
-            
-            # Uncomment this block of code and fill the blanks here and in keypoints_utils.py
-            """
-            # Tip : the model may misplace the left hand on top the right one (or vice versa), so we need to check if the wrist 
-            # are present in the frame, otherwise we set the hand scores to 0
             for det in range(scores.shape[0]):
                 if scores[det, LEFT_WRIST_ID] < args.score_threshold:
                     scores[det, LEFT_HAND_IDS] = 0.0
@@ -128,27 +121,39 @@ def main(args):
 
             for person_kpts, person_scores in zip(keypoints, scores):
                 draw_skeleton(
-                    # place your args
+                    frame,
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                    hands_style=args.hands_style,
                 )
-
-                # Use the keypoints to extract bounding boxes for the left and right hand and the face
                 left_bbox = get_hand_bbox(
-                    # place your args
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                    side="left",
                 )
                 right_bbox = get_hand_bbox(
-                    # place your args
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
+                    side="right",
                 )
                 draw_bbox(frame, left_bbox, color=(100, 100, 255))
                 draw_bbox(frame, right_bbox, color=(100, 255, 100))
                 face_bbox = get_face_bbox(
-                    # place your args
+                    person_kpts,
+                    scores=person_scores,
+                    kpt_thr=args.score_threshold,
                 )
                 draw_bbox(frame, face_bbox, color=(255, 100, 100))
 
-            cv2.putText(frame, 
-                        # str() # place the people count str here 
-                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-            """
+            draw_label(
+                frame,
+                f"people count: {keypoints.shape[0]}",
+                (10, 30),
+                color=(255, 255, 0),
+            )
 
             cv2.imshow("Part 1 - live whole body", frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
