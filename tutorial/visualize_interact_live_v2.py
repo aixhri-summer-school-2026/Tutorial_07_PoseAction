@@ -620,9 +620,9 @@ def main():
                     if face_bbox is not None:
                         track_lost_counter = 0
                         (hx, hy), head_box = face_bbox_center(face_bbox, frame.shape)
-                        _im_target_yaw = -(hx - 0.5) * (CAMERA_FOV_H_DEG * 1.3)
+                        _im_target_yaw = -(hx - 0.5) * (CAMERA_FOV_H_DEG * 1.8)
                         target_yaw = current_yaw + _im_target_yaw
-                        _im_target_pitch = (hy - 0.5) * (CAMERA_FOV_V_DEG * 1.3)
+                        _im_target_pitch = (hy - 0.5) * (CAMERA_FOV_V_DEG * 1.8)
                         target_pitch = current_pitch + _im_target_pitch
                     else:
                         track_lost_counter += 1
@@ -644,7 +644,7 @@ def main():
                             track_lost_counter = 0
                             pitch, yaw, roll, head_box = pose
                             target_yaw = clamp(MIRROR_GAIN * yaw, MAX_YAW)
-                            target_pitch = -10.0
+                            target_pitch = -15.0
                             head_pose_label = (
                                 f"yaw:{yaw:.1f} pitch:{pitch:.1f} roll:{roll:.1f}"
                             )
