@@ -754,6 +754,11 @@ def main():
                           f"| hand IoU:{commander_hand_overlap:.2f} "
                           f"| heart:{'YES' if heart_wave_active else 'no'}")
                 draw_label(frame, status, (10, 30), color=(255, 255, 0))
+                instructions = (
+                    "call:sound | mute:stop | rock/fist:antennas | peace/stop:pose "
+                    "| thumb_index:mode | pinkie:antenna | heart:wave (both hands)"
+                )
+                draw_label(frame, instructions, (10, 60), color=(200, 200, 200))
 
                 cv2.imshow(window, frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
