@@ -1,7 +1,7 @@
 """Part 2 - Train a gesture classifier on hand keypoints.
 
 Input : the 21 hand keypoints of ONE hand (from prepare_hagrid_dataset.py).
-Output: one of the 8 gestures in keypoints_utils.GESTURES.
+Output: one of the gestures in keypoints_utils.GESTURES.
 
 You can train either a plain MLP or a tiny GCN:
     python tutorial/train_hand_pose_classification.py --model mlp

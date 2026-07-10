@@ -31,11 +31,22 @@ GESTURES = [
     "fist",
     "peace",
     "rock",
-    "point",
+    "call",
     "stop",
     "mute",
     "hand_heart",
+    "pinkie",
+    "thumb_index",
 ]
+
+# HaGRID annotation class names to sample for each tutorial gesture.
+# Gestures not listed here use their own name as the sole source.
+GESTURE_SOURCES = {
+    "hand_heart": ["hand_heart", "hand_heart2"],
+    "peace": ["peace", "peace_inverted"],
+    "pinkie": ["little_finger"],
+    "thumb_index": ["thumb_index", "thumb_index2"],
+}
 
 
 NUM_KEYPOINTS_HAND = 21

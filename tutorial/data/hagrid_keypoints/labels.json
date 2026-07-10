@@ -3,8 +3,10 @@
   "1": "fist",
   "2": "peace",
   "3": "rock",
-  "4": "point",
+  "4": "call",
   "5": "stop",
   "6": "mute",
-  "7": "hand_heart"
+  "7": "hand_heart",
+  "8": "pinkie",
+  "9": "thumb_index"
 }

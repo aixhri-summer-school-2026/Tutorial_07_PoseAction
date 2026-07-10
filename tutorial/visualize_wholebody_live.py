@@ -119,7 +119,11 @@ def main(args):
                 if scores[det, RIGHT_WRIST_ID] < args.score_threshold:
                     scores[det, RIGHT_HAND_IDS] = 0.0
 
-            for person_kpts, person_scores in zip(keypoints, scores):
+
+            tracks = pose_tracker.track_ids_last_frame
+            
+            for det_idx, (person_kpts, person_scores) in enumerate(zip(keypoints, scores)):
+                track_id = tracks[det_idx] if det_idx < len(tracks) else det_idx
                 draw_skeleton(
                     frame,
                     person_kpts,
@@ -147,7 +151,17 @@ def main(args):
                     kpt_thr=args.score_threshold,
                 )
                 draw_bbox(frame, face_bbox, color=(255, 100, 100))
+                if face_bbox is not None:
+                    x1, y1, _, _ = face_bbox
+                    draw_label(
+                        frame,
+                        f"ID {track_id}",
+                        (x1, y1 - 10),
+                        color=(255, 255, 0),
+                    )
 
+            # only count persons with at least one valid keypoint
+            valid_kpts = (scores > args.score_threshold).sum(axis=1)
             draw_label(
                 frame,
                 f"people count: {keypoints.shape[0]}",

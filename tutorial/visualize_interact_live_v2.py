@@ -1,20 +1,24 @@
 """Part 4 - Gesture-driven behaviours with head tracking or mirroring.
 
-Same gesture-driven behaviours as Part 3.5. At launch, choose whether
-``peace`` / ``stop`` start/stop **head-center tracking** (Part 3.5) or
-**head-yaw mirroring** (SixDRepNet pose estimate, yaw only).
+``peace`` / ``stop`` start/stop head control and lock/unlock the commander
+track ID. Use ``thumb_index`` on the command hand to toggle between
+**head-center tracking** and **head-yaw mirroring** (SixDRepNet, yaw only).
+While active, the robot follows the face of whoever issued ``peace``, not
+necessarily the largest person in frame.
 
 Gesture -> behaviour:
-    point  -> (reserved)           mute  -> stop sounds
+    call   -> play cartoon sound   mute  -> stop sounds
     rock   -> open antennas        fist  -> close antennas
+    pinkie -> raise one antenna (left/right hand)
     peace  -> start pose control   stop  -> stop pose control
+    thumb_index -> toggle tracking / mirroring mode
     hand_heart -> (both hands) wave the head
 
 Controls:
     q : quit
 
 Run (inside the container shell, display forwarded):
-    python tutorial/visualize_interact_live_v2.py --mode tracking
+    python tutorial/visualize_interact_live_v2.py
     python tutorial/visualize_interact_live_v2.py --mode mirroring
 """
 
@@ -68,6 +72,15 @@ CAMERA_FOV_V_DEG = 45.0
 MIRROR_GAIN = 1.0
 MAX_YAW = 30.0
 SCORE_THRESHOLD = 0.5
+HEART_WAVE_DURATION = 3.0
+HEART_WAVE_YAW_AMPLITUDE = 35.0
+HEART_WAVE_PITCH_BASE = -10.0
+HEART_WAVE_PITCH_AMPLITUDE = 12.0
+HEART_WAVE_HEAD_FREQ = 1.0
+HEART_WAVE_PITCH_FREQ = 1.6
+HEART_WAVE_ANTENNA_AMPLITUDE = 28.0
+HEART_WAVE_ANTENNA_FREQ = 3.0
+HEART_WAVE_ANTENNA_JITTER_FREQ = 7.0
 
 
 def build_pose_tracker():
@@ -84,7 +97,7 @@ def build_pose_tracker():
         "det_input_size": (640, 640),
         "pose": pose_onnx_model,
         "pose_input_size": (288, 384),
-        "biggest_n_boxes_only": 2,
+        "biggest_n_boxes_only": 10,
     }
 
     return PoseTracker(
@@ -93,27 +106,100 @@ def build_pose_tracker():
         backend="onnxruntime",
         device=device,
         to_openpose=False,
-        biggest_n_boxes_only=2,
+        biggest_n_boxes_only=10,
         solution_kwargs=solution_kwargs,
     )
 
 
-def get_largest_face_bbox(keypoints, scores, kpt_thr):
-    """Return the largest face box found across all detected people."""
+def get_person_bbox(person_kpts, person_scores, kpt_thr):
+    """Return a full-body bbox from visible keypoints, or None."""
+    visible = person_scores >= kpt_thr
+    if not np.any(visible):
+        return None
+
+    visible_kpts = person_kpts[visible]
+    x1, y1 = visible_kpts.min(axis=0)
+    x2, y2 = visible_kpts.max(axis=0)
+    return (int(x1), int(y1), int(x2), int(y2))
+
+
+def find_largest_person(keypoints, scores, kpt_thr):
+    """Return (det_idx, person_bbox, area) for the largest detected person."""
+    best_idx = None
     best_bbox = None
     best_area = 0
 
-    for person_kpts, person_scores in zip(keypoints, scores):
-        bbox = get_face_bbox(person_kpts, person_scores, kpt_thr=kpt_thr)
-        if bbox is None:
+    for det_idx, (person_kpts, person_scores) in enumerate(zip(keypoints, scores)):
+        person_bbox = get_person_bbox(person_kpts, person_scores, kpt_thr)
+        if person_bbox is None:
             continue
-        x1, y1, x2, y2 = bbox
+
+        x1, y1, x2, y2 = person_bbox
         area = (x2 - x1) * (y2 - y1)
         if area > best_area:
             best_area = area
-            best_bbox = bbox
+            best_idx = det_idx
+            best_bbox = person_bbox
 
-    return best_bbox
+    return best_idx, best_bbox, best_area
+
+
+def find_person_by_track_id(keypoints, scores, track_ids, target_track_id,
+                            kpt_thr):
+    """Return (det_idx, face_bbox, person_bbox) for a tracked person id."""
+    if target_track_id is None:
+        return None, None, None
+
+    for det_idx, track_id in enumerate(track_ids):
+        if track_id != target_track_id:
+            continue
+
+        person_kpts = keypoints[det_idx]
+        person_scores = scores[det_idx]
+        face_bbox = get_face_bbox(person_kpts, person_scores, kpt_thr=kpt_thr)
+        person_bbox = get_person_bbox(person_kpts, person_scores, kpt_thr)
+        return det_idx, face_bbox, person_bbox
+
+    return None, None, None
+
+
+def get_person_hands(hands, track_id=None, det_idx=None):
+    """Return left and right hand detections for one person."""
+    if track_id is not None:
+        person_hands = [h for h in hands if h["track_id"] == track_id]
+    elif det_idx is not None:
+        person_hands = [h for h in hands if h["det_idx"] == det_idx]
+    else:
+        return None, None
+
+    left_hand = next((h for h in person_hands if h["handedness"] == "left"), None)
+    right_hand = next((h for h in person_hands if h["handedness"] == "right"), None)
+    return left_hand, right_hand
+
+
+def bbox_iou(bbox_a, bbox_b):
+    """Compute IoU between two xyxy bboxes."""
+    if bbox_a is None or bbox_b is None:
+        return 0.0
+
+    x1 = max(bbox_a[0], bbox_b[0])
+    y1 = max(bbox_a[1], bbox_b[1])
+    x2 = min(bbox_a[2], bbox_b[2])
+    y2 = min(bbox_a[3], bbox_b[3])
+
+    inter_w = max(0.0, x2 - x1)
+    inter_h = max(0.0, y2 - y1)
+    inter_area = inter_w * inter_h
+    if inter_area == 0.0:
+        return 0.0
+
+    area_a = (bbox_a[2] - bbox_a[0]) * (bbox_a[3] - bbox_a[1])
+    area_b = (bbox_b[2] - bbox_b[0]) * (bbox_b[3] - bbox_b[1])
+    union_area = area_a + area_b - inter_area
+    if union_area <= 0.0:
+        return 0.0
+
+    return inter_area / union_area
 
 
 def face_bbox_center(bbox, frame_shape):
@@ -180,8 +266,17 @@ class GestureSmoother:
     def update(self, gesture):
         self.history.append(gesture)
         return Counter(self.history).most_common(1)[0][0]
-    
-    
+
+
+class BoolSmoother:
+    """Returns True only after value stayed True for the full window."""
+
+    def __init__(self, window=3):
+        self.history = deque(maxlen=window)
+
+    def update(self, value):
+        self.history.append(bool(value))
+        return len(self.history) == self.history.maxlen and all(self.history)
 
 class FilePlayer:
     """Plays a sound file exactly once, on-demand, in a separate thread."""
@@ -310,16 +405,15 @@ def main():
     parser.add_argument(
         "--mode",
         choices=["tracking", "mirroring"],
-        required=True,
-        help="Head control mode: follow head center (tracking) or mirror yaw (mirroring).",
+        default="tracking",
+        help="Initial head control mode; thumb_index toggles between tracking and mirroring.",
     )
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pose_tracker = build_pose_tracker()
     head_estimator = None
-    if args.mode == "mirroring":
-        head_estimator = HeadPoseEstimator(SIXD_MODEL, device)
+    control_mode = args.mode
     classifier, labels = load_classifier(args.classifier, device)
 
     sound_on = False
@@ -327,6 +421,8 @@ def main():
     pose_active = False
 
     smoother = GestureSmoother(window=7)
+    heart_smoother = BoolSmoother(window=3)
+    prev_gesture = "no_gesture"
 
     smooth_antenna_left = ANTENNAS_CLOSED[0]
     smooth_antenna_right = ANTENNAS_CLOSED[1]
@@ -337,10 +433,14 @@ def main():
     target_pitch = -10.0
 
     track_lost_counter = 0
+    commander_track_id = None
+    heart_wave_until = 0.0
+    prev_both_hearts = False
+    commander_hand_overlap = 0.0
     head_box = None
     head_pose_label = None
 
-    window = f"Part 4 - {args.mode}"
+    window = f"Part 4 - {control_mode}"
     cv2.namedWindow(window)
 
     print(f"Connecting to Reachy Mini... press 'q' to quit.")
@@ -348,7 +448,8 @@ def main():
         sound_player = SoundPlayer(mini)
         sound_player.start()
         
-        file_player = FilePlayer(mini, os.path.join(HERE, "sounds", "cartoon-fluttering.wav"))
+        fluttering_player = FilePlayer(mini, os.path.join(HERE, "sounds", "cartoon-fluttering.wav"))
+        rebondissement_player = FilePlayer(mini, os.path.join(HERE, "sounds", "rebondissement.wav"))
         
         mini.goto_target(create_head_pose(pitch=-10.0),
                          antennas=np.deg2rad(ANTENNAS_CLOSED), duration=1.0)
@@ -372,23 +473,81 @@ def main():
                 hands = analyze_hands(
                     keypoints, scores, frame.shape, classifier, labels,
                     device, SCORE_THRESHOLD, args.conf, track_ids)
+
+                largest_det_idx, largest_person_bbox, _ = (
+                    find_largest_person(keypoints, scores, SCORE_THRESHOLD)
+                )
+
+                # Command gestures come from the right hand of the biggest person.
+                command_hand = None
+                if largest_det_idx is not None:
+                    if commander_track_id is not None:
+                        # keep looking for the hand of the commander if it exists
+                        matching = [
+                            h for h in hands
+                            if h["track_id"] == commander_track_id
+                            and h["handedness"] == "right"
+                        ]
+                    else:
+                        # if it does not exist, look for the right hand of the biggest person
+                        matching = [
+                            h for h in hands
+                            if h["det_idx"] == largest_det_idx
+                            and h["handedness"] == "right"
+                        ]
+                    if matching:
+                        command_hand = matching[0]
+                        draw_bbox(frame, command_hand["hand_bbox"], color=(0, 255, 0))
                 
-                # we only take left hand of the biggest person
-                biggest_person_size = max(hands, key=lambda h: h["person_size"])["person_size"] if hands else None
-                command_hand = [h for h in hands if (h["person_size"] == biggest_person_size and h["handedness"] == "left")] if biggest_person_size else None
-                if command_hand and len(command_hand) > 0:
-                    command_hand = command_hand[0]
-                    draw_bbox(frame, command_hand["hand_bbox"], color=(0, 255, 0))
-                
-                # are there both hands of the biggest person doing the heart gesture?
-                both_hearts = len([h for h in hands if (h["person_size"] == biggest_person_size and h["gesture"] == "hand_heart")]) >= 2
+                # Both hearts: commander's hands must show heart gesture and overlap.
+                left_hand, right_hand = get_person_hands(
+                    hands,
+                    track_id=commander_track_id,
+                    det_idx=largest_det_idx if commander_track_id is None else None,
+                )
+                if (
+                    left_hand is not None
+                    and right_hand is not None
+                    and left_hand["hand_bbox"] is not None
+                    and right_hand["hand_bbox"] is not None
+                ):
+                    commander_hand_overlap = bbox_iou(
+                        left_hand["hand_bbox"], right_hand["hand_bbox"])
+                else:
+                    commander_hand_overlap = 0.0
+
+                both_hearts_raw = (
+                    left_hand is not None
+                    and right_hand is not None
+                    and left_hand["gesture"] == "hand_heart"
+                    and right_hand["gesture"] == "hand_heart"
+                    and commander_hand_overlap > 0.0
+                )
+                both_hearts = heart_smoother.update(both_hearts_raw)
+
+                if both_hearts:
+                    heart_wave_until = max(
+                        heart_wave_until, time.time() + HEART_WAVE_DURATION)
+                    if not prev_both_hearts:
+                        rebondissement_player.play()
+                prev_both_hearts = both_hearts
+                heart_wave_active = time.time() < heart_wave_until
 
                 raw_gesture = command_hand["gesture"] if command_hand else "no_gesture"
                 gesture = smoother.update(raw_gesture)
 
-                if gesture == "point":
+                if gesture == "thumb_index" and prev_gesture != "thumb_index":
+                    control_mode = (
+                        "mirroring" if control_mode == "tracking" else "tracking"
+                    )
+                    print(f"Switched head control mode to: {control_mode}")
+                    track_lost_counter = 0
+                    cv2.setWindowTitle(window, f"Part 4 - {control_mode}")
+                prev_gesture = gesture
+
+                if gesture == "call":
                     sound_on = True
-                    file_player.play() # single play
+                    fluttering_player.play() # single play
                 elif gesture == "mute":
                     sound_on = False
                 elif gesture == "rock":
@@ -396,26 +555,63 @@ def main():
                 elif gesture == "fist":
                     antennas_open = False
                 elif gesture == "peace":
-                    pose_active = True
+                    if command_hand is not None:
+                        pose_active = True
+                        commander_track_id = command_hand["track_id"]
+                        print(f"Head control target locked to track ID {commander_track_id}")
                 elif gesture == "stop":
                     pose_active = False
+                    commander_track_id = None
 
                 # sound_player.set_active(sound_on)
-                antennas = ANTENNAS_OPEN if antennas_open else ANTENNAS_CLOSED
-
-                smooth_antenna_left = 0.8 * smooth_antenna_left + 0.2 * antennas[0]
-                smooth_antenna_right = 0.8 * smooth_antenna_right + 0.2 * antennas[1]
+                antenna_left_target = (
+                    ANTENNAS_OPEN[0] if antennas_open else ANTENNAS_CLOSED[0]
+                )
+                antenna_right_target = (
+                    ANTENNAS_OPEN[1] if antennas_open else ANTENNAS_CLOSED[1]
+                )
+                if largest_det_idx is not None:
+                    for hand in hands:
+                        if hand["det_idx"] != largest_det_idx:
+                            continue
+                        if hand["gesture"] != "pinkie":
+                            continue
+                        if hand["handedness"] == "left":
+                            antenna_left_target = ANTENNAS_OPEN[0]
+                        else:
+                            antenna_right_target = ANTENNAS_OPEN[1]
 
                 head_box = None
                 head_pose_label = None
-                face_bbox = get_largest_face_bbox(keypoints, scores, SCORE_THRESHOLD)
+                _, face_bbox, commander_person_bbox = (
+                    find_person_by_track_id(
+                        keypoints, scores, track_ids,
+                        commander_track_id, SCORE_THRESHOLD)
+                )
 
-                if both_hearts:
-                    wave_yaw = 20.0 * np.sin(2.0 * np.pi * 1.0 * time.time())
-                    target_yaw = wave_yaw
-                    target_pitch = -10.0
+                if heart_wave_active:
+                    t = time.time()
+                    target_yaw = (
+                        HEART_WAVE_YAW_AMPLITUDE
+                        * np.sin(2.0 * np.pi * HEART_WAVE_HEAD_FREQ * t)
+                    )
+                    target_pitch = (
+                        HEART_WAVE_PITCH_BASE
+                        + HEART_WAVE_PITCH_AMPLITUDE
+                        * np.sin(2.0 * np.pi * HEART_WAVE_PITCH_FREQ * t + np.pi / 4)
+                    )
+                    antenna_wiggle = np.sin(2.0 * np.pi * HEART_WAVE_ANTENNA_FREQ * t)
+                    antenna_jitter = 0.35 * np.sin(
+                        2.0 * np.pi * HEART_WAVE_ANTENNA_JITTER_FREQ * t
+                    )
+                    antenna_left_target = HEART_WAVE_ANTENNA_AMPLITUDE * (
+                        antenna_wiggle + antenna_jitter
+                    )
+                    antenna_right_target = HEART_WAVE_ANTENNA_AMPLITUDE * (
+                        -antenna_wiggle + antenna_jitter
+                    )
                     
-                elif pose_active and args.mode == "tracking":
+                elif pose_active and control_mode == "tracking":
                     current_head_pos = mini.get_current_head_pose()
                     current_yaw, current_pitch, _ = scipy.spatial.transform.Rotation.from_matrix(
                         current_head_pos[:3, :3]
@@ -431,13 +627,17 @@ def main():
                     else:
                         track_lost_counter += 1
                         if track_lost_counter > 10:
-                            print("Head lost, stop tracking and reset.")
+                            print("Commander lost, stop tracking and reset.")
                             pose_active = False
+                            commander_track_id = None
                             target_yaw = 0.0
                             target_pitch = -10.0
                             track_lost_counter = 0
                             
-                elif pose_active and args.mode == "mirroring":
+                elif pose_active and control_mode == "mirroring":
+                    if head_estimator is None:
+                        print("Loading head pose estimator...")
+                        head_estimator = HeadPoseEstimator(SIXD_MODEL, device)
                     if face_bbox is not None:
                         pose = head_estimator.estimate(frame, face_bbox)
                         if pose is not None:
@@ -454,8 +654,9 @@ def main():
                         track_lost_counter += 1
 
                     if track_lost_counter > 10:
-                        print("Head lost, stop mirroring and reset.")
+                        print("Commander lost, stop mirroring and reset.")
                         pose_active = False
+                        commander_track_id = None
                         target_yaw = 0.0
                         target_pitch = -10.0
                         track_lost_counter = 0
@@ -463,14 +664,29 @@ def main():
                     target_yaw = 0.0
                     target_pitch = -10.0
 
+                antenna_smooth = 0.45 if heart_wave_active else 0.2
+
                 smooth_yaw = 0.8 * smooth_yaw + 0.2 * target_yaw
                 smooth_pitch = 0.8 * smooth_pitch + 0.2 * target_pitch
+                smooth_antenna_left = (
+                    (1.0 - antenna_smooth) * smooth_antenna_left
+                    + antenna_smooth * antenna_left_target
+                )
+                smooth_antenna_right = (
+                    (1.0 - antenna_smooth) * smooth_antenna_right
+                    + antenna_smooth * antenna_right_target
+                )
                 head = create_head_pose(yaw=smooth_yaw, pitch=smooth_pitch, degrees=True)
 
                 mini.set_target(head=head,
                                 antennas=np.deg2rad([smooth_antenna_left, smooth_antenna_right]))
 
-                for person_kpts, person_scores in zip(keypoints, scores):
+                for det_idx, (person_kpts, person_scores) in enumerate(
+                        zip(keypoints, scores)):
+                    track_id = (
+                        track_ids[det_idx]
+                        if det_idx < len(track_ids) else det_idx
+                    )
                     draw_skeleton(
                         frame,
                         person_kpts,
@@ -478,6 +694,41 @@ def main():
                         kpt_thr=SCORE_THRESHOLD,
                         include_face=True,
                     )
+                    person_bbox = get_person_bbox(
+                        person_kpts, person_scores, kpt_thr=SCORE_THRESHOLD)
+                    if person_bbox is not None:
+                        x1, y1, _, _ = person_bbox
+                        draw_label(
+                            frame,
+                            f"ID {track_id}",
+                            (x1, y1 - 10),
+                            color=(255, 255, 0),
+                        )
+
+                show_face_bbox = (
+                    pose_active
+                    and not heart_wave_active
+                    and control_mode in ("tracking", "mirroring")
+                )
+
+                if largest_person_bbox is not None:
+                    draw_bbox(
+                        frame,
+                        largest_person_bbox,
+                        color=(0, 255, 255),
+                        thickness=3,
+                    )
+
+                if commander_person_bbox is not None:
+                    draw_bbox(
+                        frame,
+                        commander_person_bbox,
+                        color=(255, 128, 0),
+                        thickness=2,
+                    )
+
+                if show_face_bbox and face_bbox is not None:
+                    draw_bbox(frame, face_bbox, color=(255, 100, 100))
 
                 for hand in hands:
                     wrist = hand["pixels"][0]
@@ -493,10 +744,15 @@ def main():
                         draw_label(frame, head_pose_label, (x1, y1 - 10))
 
                 pose_status = "ON" if pose_active else "off"
+                commander_label = (
+                    f"ID {commander_track_id}" if commander_track_id is not None else "none"
+                )
                 status = (f"cmd:{gesture} | sound:{'ON' if sound_on else 'off'} "
                           f"| antennas:{'open' if antennas_open else 'closed'} "
-                          f"| {args.mode}:{pose_status} ({track_lost_counter} lost) "
-                          f"| heart:{'YES' if both_hearts else 'no'}")
+                          f"| {control_mode}:{pose_status} ({track_lost_counter} lost) "
+                          f"| commander:{commander_label} "
+                          f"| hand IoU:{commander_hand_overlap:.2f} "
+                          f"| heart:{'YES' if heart_wave_active else 'no'}")
                 draw_label(frame, status, (10, 30), color=(255, 255, 0))
 
                 cv2.imshow(window, frame)

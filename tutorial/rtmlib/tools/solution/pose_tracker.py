@@ -185,6 +185,7 @@ class PoseTracker:
         self.next_id = 0
         self.bboxes_last_frame = []
         self.track_ids_last_frame = []
+        self.det_bboxes_last_frame = []
 
     def __call__(self, image: np.ndarray):
 
@@ -207,18 +208,22 @@ class PoseTracker:
                 except:  # noqa
                     return [], []
             else:
-                bboxes = self.bboxes_last_frame
-
+                bboxes = self.det_bboxes_last_frame
+                
             if self.biggest_n_boxes_only > 0:
                 bboxes_sizes = [bbox[2] * bbox[3] for bbox in bboxes]
                 bboxes_sizes.sort(reverse=True)
                 bboxes_sizes = bboxes_sizes[:self.biggest_n_boxes_only]
                 bboxes = [bbox for bbox in bboxes if bbox[2] * bbox[3] in bboxes_sizes]
 
+            if self.frame_cnt % self.det_frequency == 0:
+                self.det_bboxes_last_frame = list(bboxes)
+
             if pose_model_name == 'RTMPose3d':
                 keypoints, scores, keypoints_simcc, keypoints2d = self.pose_model(
                     image, bboxes=bboxes)
             else:
+                empty_frame = (len(bboxes) == 0)
                 keypoints, scores = self.pose_model(image, bboxes=bboxes)
 
         else:  # one-stage algorithm, e.g. rtmo
@@ -236,35 +241,42 @@ class PoseTracker:
                     bbox = pose_to_bbox(kpts)
                     bboxes_current_frame.append(bbox)
 
+            self.bboxes_last_frame = bboxes_current_frame
+
         else:
             # with tracking
-            if len(self.track_ids_last_frame) == 0:
-                self.next_id = len(self.bboxes_last_frame)
-                self.track_ids_last_frame = list(range(self.next_id))
+            bboxes_prev = list(self.bboxes_last_frame)
+            track_ids_prev = list(self.track_ids_last_frame)
+            used_prev_indices = set()
 
             bboxes_current_frame = []
             track_ids_current_frame = []
-            for kpts in keypoints:
-                bbox = pose_to_bbox(kpts)
+            det_indices_current_frame = []
+            if not empty_frame:
+                for det_idx, kpts in enumerate(keypoints):
+                    bbox = pose_to_bbox(kpts)
 
-                track_id, _ = self.track_by_iou(bbox)
+                    track_id, _ = self.track_by_iou(
+                        bbox, bboxes_prev, track_ids_prev, used_prev_indices)
 
-                if track_id > -1:
-                    track_ids_current_frame.append(track_id)
-                    bboxes_current_frame.append(bbox)
+                    if track_id > -1:
+                        track_ids_current_frame.append(track_id)
+                        bboxes_current_frame.append(bbox)
+                        det_indices_current_frame.append(det_idx)
 
+            self.bboxes_last_frame = bboxes_current_frame
             self.track_ids_last_frame = track_ids_current_frame
-            # reorder keypoints, scores according to track_id
-            try:
-                keypoints = np.array(
-                    [keypoints[i] for i in self.track_ids_last_frame])
-                scores = np.array(
-                    [scores[i] for i in self.track_ids_last_frame])
-            except:  # noqa
-                # in case track_ids_current_frame is empty
-                return keypoints, scores,
 
-        self.bboxes_last_frame = bboxes_current_frame
+            if det_indices_current_frame:
+                sort_order = np.argsort(track_ids_current_frame)
+                det_indices = [
+                    det_indices_current_frame[i] for i in sort_order
+                ]
+                keypoints = keypoints[det_indices]
+                scores = scores[det_indices]
+                self.track_ids_last_frame = [
+                    track_ids_current_frame[i] for i in sort_order
+                ]
         self.frame_cnt += 1
 
         if pose_model_name == 'RTMPose3d':
@@ -272,17 +284,19 @@ class PoseTracker:
 
         return keypoints, scores
 
-    def track_by_iou(self, bbox):
+    def track_by_iou(self, bbox, bboxes_prev, track_ids_prev,
+                     used_prev_indices):
         """Get track id using IoU tracking greedily.
 
         Args:
-            bbox (list): The bbox info (left, top, right, bottom, score).
-            next_id (int): The next track id.
+            bbox (list): The bbox info (left, top, right, bottom).
+            bboxes_prev (list): Previous-frame bboxes to match against.
+            track_ids_prev (list): Track ids aligned with bboxes_prev.
+            used_prev_indices (set): Indices already matched this frame.
 
         Returns:
             track_id (int): The track id.
-            match_result (list): The matched bbox.
-            next_id (int): The updated next track id.
+            match_result (list): The matched bbox, or None.
         """
 
         area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
@@ -290,7 +304,9 @@ class PoseTracker:
         max_iou_score = -1
         max_index = -1
         match_result = None
-        for index, each_bbox in enumerate(self.bboxes_last_frame):
+        for index, each_bbox in enumerate(bboxes_prev):
+            if index in used_prev_indices:
+                continue
 
             iou_score = compute_iou(bbox, each_bbox)
             if iou_score > max_iou_score:
@@ -298,18 +314,15 @@ class PoseTracker:
                 max_index = index
 
         if max_iou_score > self.tracking_thr:
-            # if the bbox has a match and the IoU is larger than threshold
-            track_id = self.track_ids_last_frame.pop(max_index)
-            match_result = self.bboxes_last_frame.pop(max_index)
+            used_prev_indices.add(max_index)
+            track_id = track_ids_prev[max_index]
+            match_result = bboxes_prev[max_index]
 
         elif area >= self.MIN_AREA:
-            # no match, but the bbox is large enough,
-            # assign a new track id
             track_id = self.next_id
             self.next_id += 1
 
         else:
-            # if the bbox is too small, ignore it
             track_id = -1
 
         return track_id, match_result
