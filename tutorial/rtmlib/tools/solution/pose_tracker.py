@@ -123,18 +123,59 @@ def pose_to_bbox(keypoints: np.ndarray, expansion: float = 1.25) -> np.ndarray:
     return bbox
 
 
+def keypoints_to_bbox(keypoints: np.ndarray,
+                      scores: np.ndarray,
+                      keypoint_ids: list,
+                      kpt_thr: float = 0.3,
+                      expansion: float = 1.25) -> np.ndarray | None:
+    """Get a bounding box from a subset of keypoints.
+
+    Args:
+        keypoints (np.ndarray): Keypoints of one person, shape (K, 2).
+        scores (np.ndarray): Confidence scores, shape (K,).
+        keypoint_ids (list): Indices of keypoints used to build the bbox.
+        kpt_thr (float): Minimum score for a keypoint to be used.
+        expansion (float): Expansion ratio applied around the bbox center.
+
+    Returns:
+        np.ndarray | None: xyxy bbox, or None if too few keypoints are visible.
+    """
+    ids = np.asarray(keypoint_ids, dtype=int)
+    subset_kpts = np.asarray(keypoints)[ids]
+    subset_scores = np.asarray(scores)[ids]
+    visible_kpts = subset_kpts[subset_scores >= kpt_thr]
+    if len(visible_kpts) < 2:
+        return None
+    return pose_to_bbox(visible_kpts, expansion=expansion)
+
+
+def det_bbox_xyxy(bbox) -> np.ndarray:
+    """Normalize a detector bbox to xyxy (first four values)."""
+    return np.asarray(bbox, dtype=np.float32).reshape(-1)[:4]
+
+
 class PoseTracker:
     """Pose tracker for pose estimation.
 
     Args:
         solution (type): rtmlib solutions, e.g. Wholebody, Body, Custom, etc.
         det_frequency (int): Frequency of object detection.
+        tracking (bool): Whether to enable IoU-based person tracking.
+        tracking_thr (float): IoU threshold for track matching.
+        tracking_keypoint_ids (list, optional): If set, derive tracking bboxes
+            from these keypoint indices (e.g. face keypoints) instead of
+            detector boxes. More stable when tracking faces across frames.
+        tracking_kpt_thr (float): Min keypoint score when building tracking bbox.
+        tracking_bbox_expansion (float): Expansion ratio for keypoint tracking bbox.
         mode (str): 'performance', 'lightweight', or 'balanced'.
         to_openpose (bool): Whether to use openpose-style skeleton.
         backend (str): Backend of pose estimation model.
         device (str): Device of pose estimation model.
+        biggest_n_boxes_only (int): Keep only the N largest detection boxes.
+        solution_kwargs (dict): Extra kwargs passed to the solution class.
     """
     MIN_AREA = 1000
+    MIN_KEYPOINT_TRACK_AREA = 100
 
     def __init__(self,
                  solution: type,
@@ -146,6 +187,9 @@ class PoseTracker:
                  backend: str = 'onnxruntime',
                  device: str = 'cpu',
                  biggest_n_boxes_only: int = 0,
+                 tracking_keypoint_ids: list = None,
+                 tracking_kpt_thr: float = 0.3,
+                 tracking_bbox_expansion: float = 1.25,
                  solution_kwargs: dict = {}):
 
         model = solution(mode=mode,
@@ -169,6 +213,15 @@ class PoseTracker:
         self.pose_model = model.pose_model
         
         self.biggest_n_boxes_only = biggest_n_boxes_only
+        self.tracking_keypoint_ids = (
+            list(tracking_keypoint_ids) if tracking_keypoint_ids else None
+        )
+        self.tracking_kpt_thr = tracking_kpt_thr
+        self.tracking_bbox_expansion = tracking_bbox_expansion
+        self.tracking_min_area = (
+            self.MIN_KEYPOINT_TRACK_AREA
+            if self.tracking_keypoint_ids else self.MIN_AREA
+        )
         
         self.det_frequency = det_frequency
         self.tracking = tracking
@@ -176,8 +229,39 @@ class PoseTracker:
         self.reset()
 
         if self.tracking:
-            print('Tracking is on, you can get higher FPS by turning it off:'
-                  '`PoseTracker(tracking=False)`')
+            if self.tracking_keypoint_ids:
+                print('Tracking is on (keypoint bbox mode, '
+                      f'{len(self.tracking_keypoint_ids)} keypoints).')
+            else:
+                print('Tracking is on, you can get higher FPS by turning it off:'
+                      '`PoseTracker(tracking=False)`')
+
+    def _tracking_bbox_from_person(self, keypoints, scores):
+        """Build a tracking bbox for one person."""
+        if self.tracking_keypoint_ids is not None:
+            return keypoints_to_bbox(
+                keypoints,
+                scores,
+                self.tracking_keypoint_ids,
+                kpt_thr=self.tracking_kpt_thr,
+                expansion=self.tracking_bbox_expansion,
+            )
+        return pose_to_bbox(keypoints)
+
+    def _iter_tracking_bboxes(self, keypoints, scores, det_bboxes=None):
+        """Yield (det_idx, bbox) pairs used for IoU tracking."""
+        if self.tracking_keypoint_ids is not None:
+            for det_idx, kpts in enumerate(keypoints):
+                person_scores = scores[det_idx]
+                bbox = self._tracking_bbox_from_person(kpts, person_scores)
+                if bbox is not None:
+                    yield det_idx, bbox
+        elif det_bboxes is not None:
+            for det_idx, bbox in enumerate(det_bboxes):
+                yield det_idx, bbox
+        else:
+            for det_idx, kpts in enumerate(keypoints):
+                yield det_idx, pose_to_bbox(kpts)
 
     def reset(self):
         """Reset pose tracker."""
@@ -190,6 +274,8 @@ class PoseTracker:
     def __call__(self, image: np.ndarray):
 
         pose_model_name = type(self.pose_model).__name__
+        track_bboxes = None
+        empty_frame = False
 
         if self.det_model:  # top-down algorithm, e.g. rtmpose
             if self.frame_cnt % self.det_frequency == 0:
@@ -219,26 +305,33 @@ class PoseTracker:
             if self.frame_cnt % self.det_frequency == 0:
                 self.det_bboxes_last_frame = list(bboxes)
 
+            track_bboxes = [det_bbox_xyxy(bbox) for bbox in bboxes]
+            empty_frame = len(track_bboxes) == 0
+            if self.tracking_keypoint_ids is not None:
+                track_bboxes = None
+
             if pose_model_name == 'RTMPose3d':
                 keypoints, scores, keypoints_simcc, keypoints2d = self.pose_model(
                     image, bboxes=bboxes)
             else:
-                empty_frame = (len(bboxes) == 0)
                 keypoints, scores = self.pose_model(image, bboxes=bboxes)
 
         else:  # one-stage algorithm, e.g. rtmo
             keypoints, scores = self.pose_model(image)
+            empty_frame = len(keypoints) == 0
 
         if not self.tracking and self.det_frequency != 1:
             # without tracking
             bboxes_current_frame = []
-            if pose_model_name == 'RTMPose3d':
-                for kpts in keypoints2d:
+            track_kpts = (
+                keypoints2d if pose_model_name == 'RTMPose3d' else keypoints
+            )
+            for det_idx, kpts in enumerate(track_kpts):
+                if self.tracking_keypoint_ids is not None:
+                    bbox = self._tracking_bbox_from_person(kpts, scores[det_idx])
+                else:
                     bbox = pose_to_bbox(kpts)
-                    bboxes_current_frame.append(bbox)
-            else:
-                for kpts in keypoints:
-                    bbox = pose_to_bbox(kpts)
+                if bbox is not None:
                     bboxes_current_frame.append(bbox)
 
             self.bboxes_last_frame = bboxes_current_frame
@@ -252,10 +345,12 @@ class PoseTracker:
             bboxes_current_frame = []
             track_ids_current_frame = []
             det_indices_current_frame = []
+            track_kpts = (
+                keypoints2d if pose_model_name == 'RTMPose3d' else keypoints
+            )
             if not empty_frame:
-                for det_idx, kpts in enumerate(keypoints):
-                    bbox = pose_to_bbox(kpts)
-
+                for det_idx, bbox in self._iter_tracking_bboxes(
+                        track_kpts, scores, det_bboxes=track_bboxes):
                     track_id, _ = self.track_by_iou(
                         bbox, bboxes_prev, track_ids_prev, used_prev_indices)
 
@@ -318,7 +413,7 @@ class PoseTracker:
             track_id = track_ids_prev[max_index]
             match_result = bboxes_prev[max_index]
 
-        elif area >= self.MIN_AREA:
+        elif area >= self.tracking_min_area:
             track_id = self.next_id
             self.next_id += 1
 

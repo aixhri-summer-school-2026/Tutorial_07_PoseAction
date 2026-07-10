@@ -22,6 +22,7 @@ from reachy_mini import ReachyMini
 from rtmlib import PoseTracker, Wholebody
 
 from keypoints_utils import (
+    FACE_IDS,
     LEFT_HAND_IDS,
     LEFT_WRIST_ID,
     RIGHT_HAND_IDS,
@@ -53,7 +54,7 @@ class FakeContext:
 
 
 
-def build_pose_tracker():
+def build_pose_tracker(tracking_kpt_thr=0.5):
     """Create the whole-body tracker with the same setup as the demo script."""
     device = "cuda" if "CUDAExecutionProvider" in ort.get_available_providers() else "cpu"
     print(f"Loading the RTMLib whole-body tracker on {device}...")
@@ -78,6 +79,8 @@ def build_pose_tracker():
         device=device,
         to_openpose=False,
         biggest_n_boxes_only=3, # will perfom pose estimation on the 3 biggest boxes only (to speed up the process)
+        tracking_keypoint_ids=list(FACE_IDS),
+        tracking_kpt_thr=tracking_kpt_thr,
         solution_kwargs=solution_kwargs,
     )
     return tracker
@@ -94,7 +97,7 @@ def main(args):
         cap = FakeCamera()
 
     cv2.namedWindow("Part 1 - live whole body")
-    pose_tracker = build_pose_tracker()
+    pose_tracker = build_pose_tracker(tracking_kpt_thr=args.score_threshold)
 
     print(f"Connecting to {args.use_input} camera... press 'q' to quit.")
     with ctx() as mini:

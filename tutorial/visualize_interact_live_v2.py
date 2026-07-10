@@ -19,7 +19,7 @@ Controls:
 
 Run (inside the container shell, display forwarded):
     python tutorial/visualize_interact_live_v2.py
-    python tutorial/visualize_interact_live_v2.py --mode mirroring
+    python tutorial/visualize_interact_live_v2.py --mode allowmirroring
 """
 
 import argparse
@@ -43,6 +43,8 @@ from torchvision import transforms
 
 from handkeypoints_infer import classify_hand, load_classifier
 from keypoints_utils import (
+    BODY_NO_ARMS_IDS,
+    FACE_IDS,
     LEFT_HAND_IDS,
     LEFT_WRIST_ID,
     RIGHT_HAND_IDS,
@@ -71,6 +73,7 @@ CAMERA_FOV_V_DEG = 45.0
 
 MIRROR_GAIN = 1.0
 MAX_YAW = 30.0
+MIRROR_EDGE_MARGIN = 5
 SCORE_THRESHOLD = 0.5
 HEART_WAVE_DURATION = 3.0
 HEART_WAVE_YAW_AMPLITUDE = 35.0
@@ -107,6 +110,8 @@ def build_pose_tracker():
         device=device,
         to_openpose=False,
         biggest_n_boxes_only=10,
+        tracking_keypoint_ids=list(BODY_NO_ARMS_IDS),
+        tracking_kpt_thr=SCORE_THRESHOLD,
         solution_kwargs=solution_kwargs,
     )
 
@@ -395,6 +400,21 @@ def clamp(value, limit):
     return max(-limit, min(limit, value))
 
 
+def apply_mirror_yaw_edge_limits(target_yaw, current_yaw, head_box, frame_width):
+    """Clamp mirror yaw when the head box already touches a frame edge."""
+    x1, _, x2, _ = head_box
+    limit = None
+
+    if x2 >= frame_width - MIRROR_EDGE_MARGIN:
+        target_yaw = min(target_yaw, current_yaw)
+        limit = "right"
+    if x1 <= MIRROR_EDGE_MARGIN:
+        target_yaw = max(target_yaw, current_yaw)
+        limit = "left" if limit is None else "left+right"
+
+    return target_yaw, limit
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Gesture-driven robot behaviours with head tracking or mirroring."
@@ -404,16 +424,16 @@ def main():
                         help="Minimum classifier confidence to trust a gesture.")
     parser.add_argument(
         "--mode",
-        choices=["tracking", "mirroring"],
+        choices=["tracking", "allowmirroring"],
         default="tracking",
-        help="Initial head control mode; thumb_index toggles between tracking and mirroring.",
+        help="Initial head control mode; thumb_index toggles between tracking and allowmirroring.",
     )
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     pose_tracker = build_pose_tracker()
     head_estimator = None
-    control_mode = args.mode
+    control_mode = "tracking" #args.mode
     classifier, labels = load_classifier(args.classifier, device)
 
     sound_on = False
@@ -537,9 +557,13 @@ def main():
                 gesture = smoother.update(raw_gesture)
 
                 if gesture == "thumb_index" and prev_gesture != "thumb_index":
-                    control_mode = (
-                        "mirroring" if control_mode == "tracking" else "tracking"
-                    )
+                    if args.mode == "allowmirroring":                        
+                        control_mode = (
+                            "mirroring" if control_mode == "tracking" else "tracking"
+                        )
+                    else:
+                        # keep the tracking mode
+                        control_mode = "tracking"
                     print(f"Switched head control mode to: {control_mode}")
                     track_lost_counter = 0
                     cv2.setWindowTitle(window, f"Part 4 - {control_mode}")
@@ -638,16 +662,24 @@ def main():
                     if head_estimator is None:
                         print("Loading head pose estimator...")
                         head_estimator = HeadPoseEstimator(SIXD_MODEL, device)
+                    current_head_pos = mini.get_current_head_pose()
+                    current_yaw, _, _ = scipy.spatial.transform.Rotation.from_matrix(
+                        current_head_pos[:3, :3]
+                    ).as_euler("zyx", degrees=True)
                     if face_bbox is not None:
                         pose = head_estimator.estimate(frame, face_bbox)
                         if pose is not None:
                             track_lost_counter = 0
                             pitch, yaw, roll, head_box = pose
                             target_yaw = clamp(MIRROR_GAIN * yaw, MAX_YAW)
+                            target_yaw, edge_limit = apply_mirror_yaw_edge_limits(
+                                target_yaw, current_yaw, head_box, frame.shape[1])
                             target_pitch = -15.0
                             head_pose_label = (
                                 f"yaw:{yaw:.1f} pitch:{pitch:.1f} roll:{roll:.1f}"
                             )
+                            if edge_limit is not None:
+                                head_pose_label += f" | limit:{edge_limit}"
                         else:
                             track_lost_counter += 1
                     else:

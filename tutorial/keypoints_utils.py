@@ -57,6 +57,7 @@ LEFT_HAND_IDS = np.arange(91, 112)
 RIGHT_HAND_IDS = np.arange(112, 133)
 FACE_IDS = np.arange(23, 91)
 BODY_IDS = np.arange(17)
+BODY_NO_ARMS_IDS = [0, 1, 2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 16]
 
 HAND21_EDGES_COCO133 = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16), (0, 17), (17, 18), (18, 19), (19, 20)]
 HAND21_EDGES_MEDIAPIPE = [
